@@ -1,0 +1,41 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+struct VarUInt
+{
+    byte bValue;
+    local uint value = bValue;
+    if (bValue != 0xFF)
+        return;
+    ushort sValue;
+    value = sValue;
+    if (sValue != 0xFFFF)
+        return;
+    uint iValue;
+    value = iValue;
+};
+
+struct VarString
+{
+    VarUInt length;
+    if (length.value > 0)
+        char value[length.value];
+};
+
+uint typeBlockSize;
+byte typeBlock[typeBlockSize - FTell()];
+
+VarString
+    str_cmundo,
+    str_mundoName,
+    strings[15] <optimize=false>;

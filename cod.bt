@@ -1,0 +1,89 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+struct String
+{
+  string value;
+};
+
+struct VarUInt
+{
+    byte bValue;
+    local uint value = bValue;
+    if (bValue != 0xFF)
+        return;
+    ushort sValue;
+    value = sValue;
+    if (sValue != 0xFFFF)
+        return;
+    uint iValue;
+    value = iValue;
+};
+
+struct VarString
+{
+    VarUInt length;
+    if (length.value > 0)
+        char value[length.value];
+};
+
+uint nameBlobSize;
+uint zeroBlobSize;
+struct NameBlob
+{
+    while (FTell() < nameBlobSize + 8)
+        String name;
+} nameBlob;
+
+struct Variable
+{
+    VarString name;
+    uint value;
+};
+struct VariableSet
+{
+    uint count;
+    if (count > 0)
+        Variable variables[count] <optimize = false>;
+} globalVariables;
+
+struct Procedure
+{
+    VarString name;
+    uint opOffset, value2;
+};
+struct ProcedureSet
+{
+    uint count;
+    if (count > 0)
+        Procedure procedures[count] <optimize = false>;
+} globalProcedures;
+
+struct Behavior
+{
+    VarString name;
+    VariableSet variables; // always empty
+    ProcedureSet procedures;
+};
+struct BehaviorSet
+{
+    uint count;
+    if (count > 0)
+        Behavior behaviors[count] <optimize = false>;
+} behaviors;
+
+uint opCount;
+struct Op
+{
+    int type, arg;
+} ops[opCount];

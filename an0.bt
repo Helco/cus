@@ -1,0 +1,46 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+uint count0, imageCount;
+
+local int64 start = FTell(), end, size;
+local uint i;
+struct Image
+{
+    end = FindFirst("TRUEVISION-XFILE", true, false, 0, 0.0, 1, start);
+    size = end - start + 18;
+    start = end + 18;
+    byte image[size];
+};
+for (i = 0; i < imageCount; i++)
+{
+    Image image;
+}
+
+struct ImageInfo
+{
+  uint i1, i2;
+};
+
+byte buffer1[1024];
+ImageInfo imageInfos[imageCount];
+byte buffer2[1024];
+
+uint frameCount;
+struct Frame
+{
+    uint b[count0];
+    uint a1, a2;
+    uint b1, b2;
+    uint c;
+} frames[frameCount] <optimize=false>;
