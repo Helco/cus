@@ -25,12 +25,19 @@ struct VarUInt
     value = iValue;
 };
 
-struct VarString
+typedef struct
 {
     VarUInt length;
     if (length.value > 0)
         char value[length.value];
-};
+} VarString <read=ReadVarString>;
+string ReadVarString(VarString& str)
+{
+    if (str.length.value == 0)
+        return "";
+    else
+        return str.value;
+}
 
 uint typeBlockSize;
 byte typeBlock[typeBlockSize - FTell()];
@@ -39,3 +46,332 @@ VarString
     str_cmundo,
     str_mundoName,
     strings[15] <optimize=false>;
+
+struct ObjetoBase;
+struct SueloColor;
+struct ObjetoPunto;
+struct ObjetoGrafico;
+struct ObjetoGraficoMuare;
+struct ObjetoInventario;
+struct ObjetoFisico;
+struct BotonMenu;
+struct BotonMenuPrincipal;
+struct BotonMenuInternet;
+struct BotonMenuOpciones;
+struct EditBox;
+struct PushButton;
+struct CheckBox;
+struct CheckBoxAutoAjustarRuido;
+struct SlideButton;
+struct VentanaIRC;
+struct MessageBox;
+struct ObjetoTipico;
+struct Puerta;
+struct Personaje;
+struct PersonajeAnda;
+struct PersonajePrincipal;
+struct PoligonoConTamano;
+struct Habitacion;
+struct HabitacionMenuOpciones;
+struct HabitacionConectar;
+struct HabitacionEsperar;
+struct Inventario;
+struct VuMeter;
+
+typedef struct
+{
+    VarString type <hidden=true>;
+    local string type_ = ReadVarString(type);
+    if (type_ == "CObjectoBase") ObjetoBase o;
+    else if (type_ == "CSueloColor") SueloColor o;
+    else if (type_ == "CObjetoPunto") ObjetoPunto o;
+    else if (type_ == "CObjetoGrafico") ObjetoGrafico o;
+    else if (type_ == "CObjetoGraficoMuare") ObjetoGraficoMuare o;
+    else if (type_ == "CObjetoInventario") ObjetoInventario o;
+    else if (type_ == "CObjetoFisico") ObjetoFisico o;
+    else if (type_ == "CBotonMenuPrincipal") BotonMenuPrincipal o;
+    else if (type_ == "CBotonMenuInternet") BotonMenuInternet o;
+    else if (type_ == "CBotonMenuOpciones") BotonMenuOpciones o;
+    else if (type_ == "CEditBox") EditBox o;
+    else if (type_ == "CPushButton") PushButton o;
+    else if (type_ == "CCheckBox") CheckBox o;
+    else if (type_ == "CCheckBoxAutoAjustarRuido") CheckBoxAutoAjustarRuido o;
+    else if (type_ == "CSlideButton") SlideButton o;
+    else if (type_ == "CVentanaIRC") VentanaIRC o;
+    else if (type_ == "CMessageBox") MessageBox o;
+    else if (type_ == "CObjetoTipico") ObjetoTipico o;
+    else if (type_ == "CPuerta") Puerta o;
+    else if (type_ == "CPersonaje") Personaje o;
+    else if (type_ == "CPersonajeAnda") PersonajeAnda o;
+    else if (type_ == "CPersonajePrincipal") PersonajePrincipal o;
+    else if (type_ == "CPoligonoConTamano") PoligonoConTamano o;
+    else if (type_ == "CHabitacion") Habitacion o;
+    else if (type_ == "CHabitacionMenuOpciones") HabitacionMenuOpciones o;
+    else if (type_ == "CHabitacionConectar") HabitacionConectar o;
+    else if (type_ == "CHabitacionEsperar") HabitacionEsperar o;
+    else if (type_ == "CInventario") Inventario o;
+    else if (type_ == "CVuMeter") VuMeter o;
+    else
+    {
+        Printf("Unknown object type: %s\n", ReadVarString(type));
+        Exit(-1);
+    }
+} AnyObject <read=ReadAnyObject>;
+string ReadAnyObject(AnyObject& obj)
+{
+    return ReadVarString(obj.type);
+}
+
+struct MarkedObjectList
+{
+    do
+    {
+        uint marker <hidden=true>;
+        if (marker != 0)
+            AnyObject objects <optimize=false>;
+    } while(marker != 0);
+} rootObjects;
+
+struct Point
+{
+    int x, y;
+};
+
+struct ObjetoBase
+{
+    VarString name;
+    byte isEnabled;
+};
+
+struct SueloQuad
+{
+    Point points[4];
+    byte alphas[4];
+    uint colors[4];
+    byte flag;
+};
+
+struct SueloColor
+{
+    ObjetoBase b;
+    ushort quadCount;
+    if (quadCount > 0)
+        SueloQuad quads[quadCount];
+};
+
+struct Path(int pointCount)
+{
+    Point points[pointCount];
+};
+
+struct Poligono
+{
+    byte complexity;
+    ushort pathCount;
+    if (pathCount == 0)
+        return;
+    switch(complexity)
+    {
+    case 0: Path paths(1)[pathCount] <optimize=false>; break;
+    case 1: Path paths(2)[pathCount] <optimize=false>; break;
+    case 2: Path paths(4)[pathCount] <optimize=false>; break;
+    case 3:
+        local ushort i;
+        for (i = 0; i < pathCount; i++)
+        {
+            byte pointCount <hidden=true>;
+            Path paths(pointCount) <optimize=false>;
+        }
+        break;
+    default:
+        Printf("Invalid poligono complexity %d\n", complexity);
+        Exit(-2);
+        break;
+    }
+};
+
+struct ObjetoPunto
+{
+    ObjetoBase b;
+    Poligono pos;
+};
+
+struct Grafico
+{
+    short centerX, centerY, scale;
+    byte order;
+    VarString animation;
+};
+
+struct ObjetoGrafico
+{
+    ObjetoBase b;
+    Grafico grafico;
+    uint type;
+    uint posterizeAlpha;
+};
+
+struct ObjetoGraficoMuare
+{
+    ObjetoGrafico b;
+    Poligono p1, p2;
+    int i1, i2;
+};
+
+struct ObjetoInventario
+{
+    ObjetoGrafico b;
+    byte unused <hidden=true>;
+};
+
+struct ObjetoConPoligono
+{
+    ObjetoBase b;
+    Poligono p;
+    int i;
+};
+
+struct ObjetoFisico
+{
+    ObjetoConPoligono b;
+    byte order;
+};
+
+struct BotonMenu
+{
+    ObjetoFisico b;
+    int actionId;
+    Grafico normal, hovered, clicked, disabled;
+};
+
+struct BotonMenuPrincipal { BotonMenu b; };
+struct BotonMenuInternet { BotonMenu b; };
+struct BotonMenuOpciones { BotonMenu b; };
+
+struct EditBox
+{
+    ObjetoFisico b;
+    int i1;
+    Poligono p;
+    VarString text;
+    byte b1;
+    int i2, i3, i4, i5;
+};
+
+struct PushButton
+{
+    ObjetoFisico b;
+    byte b1;
+    Grafico g1, g2;
+    int i;
+};
+
+struct CheckBox
+{
+    ObjetoFisico b;
+    byte b1;
+    Grafico g1, g2, g3, g4;
+    int valueId;
+};
+
+struct CheckBoxAutoAjustarRuido
+{
+    CheckBox b;
+    byte unused <hidden=true>;
+};
+
+struct SlideButton
+{
+    ObjetoBase b;
+    int i1;
+    Poligono p1, p2;
+    Grafico g1, g2, g3;
+};
+
+struct VentanaIRC
+{
+    ObjetoBase b;
+    Poligono p1, p2;
+};
+
+struct MessageBox
+{
+    ObjetoBase b;
+    Grafico g1, g2, g3, g4, g5;
+};
+
+struct ObjetoTipico
+{
+    ObjetoFisico b;
+    Poligono p;
+    int i1;
+    VarString str;
+};
+
+struct Puerta
+{
+    ObjetoTipico b;
+    VarString t1, t2;
+    int i1;
+};
+
+struct Personaje
+{
+    ObjetoConPoligono b;
+    Poligono p;
+    int i1;
+    Grafico g1, g2;
+};
+
+struct PersonajeAnda
+{
+    Personaje b;
+    VarString anims1[4] <optimize=false>;
+    VarString anims2[4] <optimize=false>;
+};
+
+struct PersonajePrincipal
+{
+    PersonajeAnda b;
+    byte b1;
+};
+
+struct PoligonoQuad
+{
+    Point points[4];
+    byte flag;
+    byte alphas[4];
+};
+
+struct PoligonoConTamano
+{
+    ushort count;
+    if (count > 0)
+        PoligonoQuad quads[count];
+};
+
+struct HabitacionBase(byte hasAdditionalByte)
+{
+    VarString name;
+    byte b1, b2;
+    ushort s1;
+    PoligonoConTamano p1, p2;
+    byte b3;
+    PoligonoConTamano p3;
+    byte b4;
+    if (hasAdditionalByte > 0)
+        byte b5;
+    MarkedObjectList o;
+};
+
+struct Habitacion { HabitacionBase b(0); };
+struct HabitacionMenuOpciones { HabitacionBase b(1); };
+struct HabitacionConectar { HabitacionBase b(1); };
+struct HabitacionEsperar { HabitacionBase b(1); };
+struct Inventario { HabitacionBase b(1); };
+
+struct VuMeter
+{
+    ObjetoGrafico b;
+    byte unused <hidden=true>;
+};
