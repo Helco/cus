@@ -14,8 +14,8 @@ internal enum CodOpCode
     Store,
     Crash8,
     Crash9,
-    PushName,
-    PushName2,
+    LoadString,
+    LoadString2,
     Crash12,
     Call,
     KernelProc,
@@ -45,6 +45,7 @@ internal enum CodOpCode
 }
 
 internal readonly record struct CodOp(CodOpCode code, int value);
+internal readonly record struct CodString(int offset, string value);
 internal readonly record struct CodVariable(string name, int value);
 internal readonly record struct CodProcedure(string name, int offset, int unknown);
 internal readonly record struct CodBehavior(
@@ -55,7 +56,7 @@ internal readonly record struct CodBehavior(
 internal class CodFile
 {
     public int MemorySize { get; }
-    public IReadOnlyList<string> Names { get; }
+    public IReadOnlyList<CodString> Strings { get; }
     public IReadOnlyList<CodVariable> GlobalVariables { get; }
     public IReadOnlyList<CodProcedure> GlobalProcedures { get; }
     public IReadOnlyList<CodBehavior> Behaviors { get; }
@@ -69,17 +70,19 @@ internal class CodFile
         MemorySize = br.ReadInt32();
 
         ReadOnlySpan<byte> nameBlob = br.ReadBytes(nameBlobSize).AsSpan();
-        var names = new List<string>();
+        var strings = new List<CodString>();
+        int offset = 0;
         int nextNullI = nameBlob.IndexOf((byte)0);
         while (nextNullI >= 0)
         {
-            names.Add(Encoding.Latin1.GetString(nameBlob[..nextNullI]));
+            strings.Add(new (offset, Encoding.Latin1.GetString(nameBlob[..nextNullI])));
+            offset += nextNullI + 1;
             nameBlob = nameBlob[(nextNullI + 1)..];
             nextNullI = nameBlob.IndexOf((byte)0);
         }
         if (nameBlob.Length > 0)
-            names.Add(Encoding.Latin1.GetString(nameBlob));
-        Names = names;
+            strings.Add(new(offset, Encoding.Latin1.GetString(nameBlob)));
+        Strings = strings;
 
         GlobalVariables = ReadVariableSet(br);
         GlobalProcedures = ReadProcedureSet(br);

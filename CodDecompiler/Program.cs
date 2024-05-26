@@ -18,11 +18,11 @@ internal static class Program
         writer.WriteLine();
         writer.WriteLine();
 
-        writer.WriteLine("Names: ");
+        writer.WriteLine("Strings: ");
         using (var indented = writer.Indented)
         {
-            foreach (var (index, name) in cod.Names.Indexed())
-                indented.WriteLine($"{index:D5}: {name}");
+            foreach (var (offset, name) in cod.Strings)
+                indented.WriteLine($"{offset:D5}: {name}");
         }
         writer.WriteLine();
 
@@ -47,10 +47,16 @@ internal static class Program
         writer.WriteLine();
 
         writer.WriteLine("Ops: ");
+        bool rawOps = false;
         using (var indented = writer.Indented)
         {
-            foreach (var (index, (opCode, arg)) in cod.Ops.Indexed())
-                indented.WriteLine($"{index:D5}: {opCode} {arg}");
+            if (rawOps)
+            {
+                foreach (var (index, (opCode, arg)) in cod.Ops.Indexed())
+                    indented.WriteLine($"{index:D5}: {opCode} {arg}");
+            }
+            else
+                SimpleDecompiler.Decompile(cod, indented, false);
         }
     }
 
