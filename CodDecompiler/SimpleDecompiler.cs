@@ -126,6 +126,14 @@ internal class SimpleDecompiler
         needsBrackets = needsBrackets
     };
 
+    private Expression DuplicatedExpression(Expression original, string newText) => new()
+    {
+        type = original.type,
+        value = original.value,
+        text = newText,
+        needsBrackets = false
+    };
+
     private void CreateInstructions()
     {
         Stack<Expression> stack = new();
@@ -148,6 +156,7 @@ internal class SimpleDecompiler
                 indented2.WriteLine($"{offset}: {op} {arg}");
             }
 
+            Expression value;
             switch(op)
             {
                 case CodOpCode.Nop: break;
@@ -157,8 +166,17 @@ internal class SimpleDecompiler
                         stack.Push(GeneralExpression("ERROR", false));
                         writer.WriteLine("// ERROR: Arrived without stack entry for dup");
                     }
+                    else if (stack.Peek().text.StartsWith("tmp_") ||
+                            stack.Peek().type is not ExpressionType.Expression)
+                        stack.Push(stack.Peek());
                     else
-                        stack.Push(stack.Peek() with { text = $"${stack.Peek().text}"});
+                    {
+                        var tmpName = $"tmp_{offset}";
+                        value = stack.Pop();
+                        indented.WriteLine($"{tmpName} = {value.text}");
+                        stack.Push(DuplicatedExpression(value, tmpName));
+                        stack.Push(DuplicatedExpression(value, tmpName));
+                    }
                     break;
                 case CodOpCode.PushAddr: stack.Push(AddressExpression(arg)); break;
                 case CodOpCode.PushValue: stack.Push(NumberExpression(arg)); break;
@@ -180,7 +198,7 @@ internal class SimpleDecompiler
                     break;
                 case CodOpCode.Store:
                     int origCount = stack.Count;
-                    if (!stack.TryPop(out var value) || !stack.TryPop(out var addr))
+                    if (!stack.TryPop(out value) || !stack.TryPop(out var addr))
                         writer.WriteLine($"// ERROR: Arrived with {origCount} stack entries, attempting to store");
                     else if (addr.type != ExpressionType.Address)
                     {

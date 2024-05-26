@@ -9,7 +9,7 @@ internal enum CodOpCode
     PushAddr,
     PushValue,
     Deref,
-    Crash,
+    Crash5,
     PopN,
     Store,
     Crash8,
