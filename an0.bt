@@ -11,7 +11,7 @@
 //   History: 
 //------------------------------------------------
 
-uint count0, imageCount;
+uint spriteCount, imageCount;
 
 local int64 start = FTell(), end, size;
 local uint i;
@@ -27,20 +27,19 @@ for (i = 0; i < imageCount; i++)
     Image image;
 }
 
-struct ImageInfo
+struct Point
 {
-  uint i1, i2;
+  int x, y;
 };
 
-byte buffer1[1024];
-ImageInfo imageInfos[imageCount];
-byte buffer2[1024];
+uint offsets[256];
+Point imageOffsets[imageCount];
+uint bases[256];
 
 uint frameCount;
 struct Frame
 {
-    uint b[count0];
-    uint a1, a2;
-    uint b1, b2;
-    uint c;
+    uint spriteOffsets[spriteCount];
+    Point center, offset;
+    uint duration;
 } frames[frameCount] <optimize=false>;
