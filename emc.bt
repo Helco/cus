@@ -60,8 +60,8 @@ uint unkMagic;
 enum <byte> TypeDefKind {
   TDK_End = 0,
   TDK_StructRels = 1,
-  TDK_Struct = 2,
-  TDK_Primitive = 4,
+  TDK_ExtType = 2,
+  TDK_Struct = 4,
   TDK_Enum = 5,
   TDK_KernelCall = 6,
   TDK_StructMembers = 0xFE
@@ -69,21 +69,21 @@ enum <byte> TypeDefKind {
 
 struct TypeDef;
 struct TypeDefStructRels;
-struct TypeDefStruct;
+struct TypeDefExtType;
 struct TypeDefStructMembers;
-struct TypeDefPrimitive;
+struct TypeDefStruct;
 struct TypeDefEnum;
-struct TypeDefKernelCall;
+struct FunctionSignature;
 typedef struct {
   TypeDefKind kind;
   VarString name;
 
   if (kind == TDK_StructRels) TypeDefStructRels rels;
-  else if (kind == TDK_Struct) TypeDefStruct str;
-  else if (kind == TDK_Primitive) TypeDefPrimitive prim;
+  else if (kind == TDK_ExtType) TypeDefExtType str;
+  else if (kind == TDK_Struct) TypeDefStruct prim;
   else if (kind == TDK_Enum) TypeDefEnum enu;
   else if (kind == TDK_StructMembers) TypeDefStructMembers mems;
-  else if (kind == TDK_KernelCall) TypeDefKernelCall call;
+  else if (kind == TDK_KernelCall) FunctionSignature call;
   else {
     Printf("Unknown type def kind: %d\n", (int)kind);
     Exit(-1);
@@ -93,8 +93,8 @@ string ReadTypeDef(TypeDef& def)
 {
   string kindStr = "unknown";
   if (def.kind == TDK_StructRels) kindStr = "struct-rels";
+  if (def.kind == TDK_ExtType) kindStr = "external-type";
   if (def.kind == TDK_Struct) kindStr = "struct";
-  if (def.kind == TDK_Primitive) kindStr = "primitive";
   if (def.kind == TDK_Enum) kindStr = "enum";
   if (def.kind == TDK_StructMembers) kindStr = "struct-members";
   if (def.kind == TDK_KernelCall) kindStr = "kernel-call";
@@ -111,7 +111,7 @@ while(true) {
   TypeDef type;
 }
 
-struct TypeDefStruct {
+struct TypeDefExtType {
   byte unk1;
   byte unk2;
   VarStringZT name2;
@@ -126,8 +126,8 @@ typedef struct {
     VarString typeName;
     byte typeUnk;
   }
-}  TypeDefStructMember <read=ReadTypeDefStructMember>;
-string ReadTypeDefStructMember(TypeDefStructMember& mem)
+} TypedValue <read=ReadTypedValue>;
+string ReadTypedValue(TypedValue& mem)
 {
   char buffer[1024];
   if (mem.type == -1)
@@ -140,7 +140,7 @@ struct TypeDefStructMembers {
   while(true) {
     byte nextKind <hidden=true>;
     if (nextKind == 0) break;
-    else if (nextKind == 1) TypeDefStructMember member;
+    else if (nextKind == 1) TypedValue member;
     else {
       Printf("Unknown struct member kind");
       Exit(-1);
@@ -150,16 +150,28 @@ struct TypeDefStructMembers {
 
 typedef struct {
   byte kind;
-  if (kind == 0) { }
-  else if (kind == 3) {
+  if (kind == 3) {
     VarString name;
     byte k3_unk[6];
   }
+  else if (kind == 17 || kind == 25) {
+    VarString name;
+    FunctionSignature signature;
+  } 
   else {
     Printf("Unknown struct rel kind: %d", kind);
     Exit(-1);
   }
-} TypeDefStructRel;
+} TypeDefStructRel <read=ReadTypeDefStructRel>;
+string ReadTypeDefStructRel(TypeDefStructRel &rel) {
+  string kindStr = "<unknown>";
+  if (rel.kind == 3) kindStr = "rel";
+  else if (rel.kind == 17) kindStr = "ctor";
+  else if (rel.kind == 25) kindStr = "method";
+  char buffer[1024];
+  SPrintf(buffer, "%s %s", kindStr, ReadVarString(rel.name));
+  return buffer;
+}
 struct TypeDefStructRels {
   while(true) {
     byte nextBaseClass <hidden=true>;
@@ -168,14 +180,15 @@ struct TypeDefStructRels {
     VarString baseClass;
   }
   while(true) {
+    byte nextKind <hidden=true>;
+    if (nextKind == 0) break;
+    FSkip(-1);
     TypeDefStructRel rel;
-     if (rel.kind == 0)
-       break;
   }
 };
 
 
-struct TypeDefPrimitive {
+struct TypeDefStruct {
   byte unk1;
   uint unk2;
   byte size_ <hidden=true>;
@@ -204,20 +217,13 @@ struct TypeDefEnum {
   }
 };
 
-typedef struct {
-  VarString name;
-  byte unk[6];
-} TypeDefKernelCallParam <read=ReadTypeDefKernelCallParam>;
-string ReadTypeDefKernelCallParam(TypeDefKernelCallParam& p) {
-  return ReadVarString(p.name);
-}
-struct TypeDefKernelCall {
+struct FunctionSignature {
    byte unk[6]; // return type?
    while (true) {
      byte hasNext <hidden=true>;
      if (!hasNext)
        break;
-     TypeDefKernelCallParam param;
+     TypedValue param;
    }
 };
 

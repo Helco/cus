@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CodDecompiler", "CodDecompi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConvertSND", "ConvertSND\ConvertSND.csproj", "{1758083D-0899-4F9C-A33B-BBA8135F9472}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DumpEMC", "DumpEMC\DumpEMC.csproj", "{ECC98C32-E342-450C-845B-A3E2085EA8EA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ECC98C32-E342-450C-845B-A3E2085EA8EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ECC98C32-E342-450C-845B-A3E2085EA8EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ECC98C32-E342-450C-845B-A3E2085EA8EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ECC98C32-E342-450C-845B-A3E2085EA8EA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
