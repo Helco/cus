@@ -5,7 +5,9 @@ VisualStudioVersion = 17.9.34728.123
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ExtractAn0", "ExtractAn0\ExtractAn0.csproj", "{8CC83EAC-7247-4EB7-8CB6-6A1F1FB6A2E1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodDecompiler", "CodDecompiler\CodDecompiler.csproj", "{53CD7F6E-A168-46A9-812C-ED3694C7FAED}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CodDecompiler", "CodDecompiler\CodDecompiler.csproj", "{53CD7F6E-A168-46A9-812C-ED3694C7FAED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConvertSND", "ConvertSND\ConvertSND.csproj", "{1758083D-0899-4F9C-A33B-BBA8135F9472}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{53CD7F6E-A168-46A9-812C-ED3694C7FAED}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{53CD7F6E-A168-46A9-812C-ED3694C7FAED}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{53CD7F6E-A168-46A9-812C-ED3694C7FAED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1758083D-0899-4F9C-A33B-BBA8135F9472}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
