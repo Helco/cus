@@ -14,7 +14,7 @@ public interface ICodeWritable
 
 public readonly record struct EmcEmbeddedFile(
     string Name,
-    ulong Offset,
+    long Offset,
     uint Size);
 
 public record class EmcCollection(
@@ -272,6 +272,20 @@ public record class EmcObject(
     }
 }
 
+public record class EmcArchive(
+    string Name,
+    uint TotalSize,
+    byte Unk1,
+    byte Unk2,
+    uint FileCount)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        writer.Write($"\"{Name}\" {FileCount} files in {TotalSize / 1024 / 1024}MiB ({Unk1:X2}, {Unk2:X2})");
+    }
+}
+
 public class EmcFile
 {
     public const int RegularPointCount = 4;
@@ -284,7 +298,7 @@ public class EmcFile
     public EmcFile(Stream stream)
     {
         Types = new(stream);
-        if (Types.Generation != Generation.V3)
+        if (Types.Generation is not (Generation.V3 or Generation.V2 or Generation.V1))
             throw new NotSupportedException($"Unsupported EMC timestamp: {Types.Generation} ({Types.Timestamp} - {Types.TimestampAsTime})");
 
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
@@ -410,9 +424,11 @@ public class EmcFile
     {
         switch (type.InternalName)
         {
-            case "CString": return reader.ReadVarString();
+            case "CArchivo" when Types.Generation is Generation.V1: return ReadArchiveV1(reader);
+            case "CAnimacion" when Types.Generation is Generation.V1: return ReadAnimacionV1(reader);
             case "CArchivo": return reader.ReadVarString();
             case "CAnimacion": return reader.ReadVarString();
+            case "CString": return reader.ReadVarString();
             case "CPunto": return ReadShape(reader).Polygons[0].Points[0];
             case "CRectangulo": return ReadShape(reader).Polygons[0];
             case "CRectangulos": return ReadShape(reader);
@@ -499,6 +515,40 @@ public class EmcFile
             new("order", new(0, 0, TypeRefKind.Sint8, null, null), order),
             new("animacion", new(0, 0, TypeRefKind.Named, "CAnimacion", 1), animacion)
         ]);
+    }
+
+    private EmcArchive ReadArchiveV1(BinaryReader reader)
+    {
+        var name = reader.ReadVarString();
+        uint totalSize = reader.ReadUInt32();
+        long endPosition = reader.BaseStream.Position + totalSize;
+        var unk1 = reader.ReadByte();
+        var unk2 = reader.ReadByte();
+        
+        uint fileCount = reader.ReadUInt32();
+
+        embeddedFiles.EnsureCapacity(embeddedFiles.Count + (int)fileCount);
+        for (uint i = 0; i < fileCount; i++)
+        {
+            var fileName = reader.ReadVarString() + "." + reader.ReadVarString();
+            uint fileSize = reader.ReadUInt32();
+            embeddedFiles.Add(new(fileName, reader.BaseStream.Position, fileSize));
+            reader.BaseStream.Position += fileSize;
+        }
+        if (reader.BaseStream.Position > endPosition)
+            throw new InvalidDataException("Read more archive files than expected");
+        reader.BaseStream.Position = endPosition;
+
+        return new(name, totalSize, unk1, unk2, fileCount);
+    }
+
+    private string ReadAnimacionV1(BinaryReader reader)
+    {
+        var name = reader.ReadString();
+        var size = reader.ReadUInt32();
+        embeddedFiles.Add(new(name, reader.BaseStream.Position, size));
+        reader.BaseStream.Position += size;
+        return name;
     }
 
     private ObjectRelations GetObjectType(string name)

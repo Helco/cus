@@ -1,0 +1,58 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+struct VarUInt
+{
+    byte bValue;
+    local uint value = bValue;
+    if (bValue != 0xFF)
+        return;
+    ushort sValue;
+    value = sValue;
+    if (sValue != 0xFFFF)
+        return;
+    uint iValue;
+    value = iValue;
+};
+
+typedef struct
+{
+    VarUInt length;
+    if (length.value > 0)
+        char value[length.value];
+} VarString <read=ReadVarString>;
+string ReadVarString(VarString& str)
+{
+    if (str.length.value == 0)
+        return "";
+    else
+        return str.value;
+}
+
+byte version;
+VarString archiveName;
+uint totalSize;
+byte unk1, unk2;
+uint fileCount;
+
+struct File {
+  VarString name;
+  VarString extension;
+  uint size;
+  byte data[size];
+} files[fileCount] <optimize=false, read=ReadFile>;
+string ReadFile(File& f)
+{
+  char buffer[512];
+  SPrintf(buffer, "%s.%s %u", ReadVarString(f.name), ReadVarString(f.extension), f.size);
+  return buffer;
+}

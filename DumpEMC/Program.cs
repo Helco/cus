@@ -1,4 +1,6 @@
-﻿namespace Cus;
+﻿using System.Buffers;
+
+namespace Cus;
 
 internal class Program
 {
@@ -6,23 +8,50 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        DumpTypeDescriptors(@"C:\dev\cusg\Mapas\GLOBAL.EMC", "types-aventura-german.txt");
-        DumpTypeDescriptors(@"C:\dev\cusg-aventura-demo\DATA01\Mapas\GLOBAL.EMC", "types-aventura-german-demo.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Una aventura de cine - Edición especial\English\Mapas\GLOBAL.EMC", "types-aventura-english.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Una aventura de cine - Edición especial\Spanish\Mapas\GLOBAL.EMC", "types-aventura-spanish.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Vaqueros\global.emc", "types-vaqueros.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Terror\global.emc", "types-terror.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Operación Moscú\English\Mapas\GLOBAL.EMC", "types-moscu-english.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\SextaSecta\Spanish\Mapas\GLOBAL.EMC", "types-secta.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón La banda de Corvino\Mapas\GLOBAL.EMC", "types-corvino.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón El escarabajo de Cleopatra\Spanish\Mapas\GLOBAL.EMC", "types-escarabajo.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Balones\Archivos\Mapas\GLOBAL.EMC", "types-balones.txt");
-        DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mamelucos\Archivos\Mapas\GLOBAL.EMC", "types-mamelucos.txt");
+        DumpAll(@"C:\dev\cusg\Mapas\", "aventura-german");
+        DumpAll(@"C:\dev\cusg-aventura-demo\DATA01\Mapas\", "aventura-german-demo");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Una aventura de cine - Edición especial\English\Mapas\", "aventura-english");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Una aventura de cine - Edición especial\Spanish\Mapas\", "aventura-spanish");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Operación Moscú\English\Mapas\", "moscu");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\SextaSecta\Spanish\Mapas\", "secta");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón La banda de Corvino\Mapas\", "corvino");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón El escarabajo de Cleopatra\Spanish\Mapas\", "escarabajo");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Balones\Archivos\Mapas\", "balones");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Mamelucos\Archivos\Mapas\", "mamelucos");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Vaqueros\", "vaqueros");
+        DumpAll(@"E:\SteamLibrary\steamapps\common\Terror\", "terror");
+    }
 
-        DumpAllEMCs(@"C:\dev\cusg\Mapas\", "aventura-german");
-        DumpAllEMCs(@"C:\dev\cusg-aventura-demo\DATA01\Mapas\", "aventura-german-demo");
-        DumpAllEMCs(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Una aventura de cine - Edición especial\English\Mapas\", "aventura-english");
-        DumpAllEMCs(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón Una aventura de cine - Edición especial\Spanish\Mapas\", "aventura-spanish");
+    private static void DumpAll(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var file in Directory.GetFiles(source))
+        {
+            if (!file.EndsWith(".EMC", StringComparison.InvariantCultureIgnoreCase))
+                continue;
+            Console.WriteLine(file);
+            var targetBase = Path.Combine(target, Path.GetFileNameWithoutExtension(file));
+            Directory.CreateDirectory(targetBase);
+            using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read);
+            EmcFile emc = new EmcFile(fileStream);
+            using (var writer = new CodeWriter(new StreamWriter(targetBase + ".types.txt")))
+                emc.Types.WriteTo(writer);
+            using (var writer = new CodeWriter(new StreamWriter(targetBase + ".emc.txt")))
+                emc.Root.WriteTo(writer);
+
+            foreach (var (fileName, offset, size) in emc.EmbeddedFiles)
+            {
+                var bytes = ArrayPool<byte>.Shared.Rent((int)size);
+                fileStream.Position = offset;
+                fileStream.ReadExactly(bytes, 0, (int)size);
+                var targetFileName = fileName;
+                if (targetFileName == "")
+                    targetFileName = $"unnamed-{offset}";
+                using var targetStream = new FileStream(Path.Combine(targetBase, Path.GetFileName(targetFileName)), FileMode.Create, FileAccess.Write);
+                targetStream.Write(bytes, 0, (int)size);
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
+        }
     }
 
     private static void DumpTypeDescriptors(string source, string target)
