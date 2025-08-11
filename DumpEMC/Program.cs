@@ -18,6 +18,8 @@ internal class Program
         DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón El escarabajo de Cleopatra\Spanish\Mapas\GLOBAL.EMC", "types-escarabajo.txt");
         DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Balones\Archivos\Mapas\GLOBAL.EMC", "types-balones.txt");
         DumpTypeDescriptors(@"E:\SteamLibrary\steamapps\common\Mamelucos\Archivos\Mapas\GLOBAL.EMC", "types-mamelucos.txt");
+
+        DumpEMC(@"C:\dev\cusg\Mapas\GLOBAL.EMC", "aventura-german/global.emc.txt");
     }
 
     private static void DumpTypeDescriptors(string source, string target)
@@ -26,5 +28,13 @@ internal class Program
         TypeDescriptorBlock block = new(fileStream);
         using var writer = new CodeWriter(new StreamWriter(target));
         block.WriteTo(writer);
+    }
+
+    private static void DumpEMC(string source, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        using var fileStream = new FileStream(source, FileMode.Open, FileAccess.Read);
+        EmcFile emc = new(fileStream);
+        using var writer = new CodeWriter(new StreamWriter(target));
     }
 }

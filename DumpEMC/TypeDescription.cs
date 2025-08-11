@@ -10,6 +10,14 @@ using System.Text.RegularExpressions;
 
 namespace Cus;
 
+public enum Generation
+{
+    V1,
+    V2,
+    V3,
+    Unknown
+}
+
 public enum TypeDescriptorKind : byte
 {
     End = 0,
@@ -166,6 +174,7 @@ public readonly record struct EnumType(
 
 public enum TypeRefKind : byte
 {
+    Sint8 = 0x2B, // there surely is the correct value but I do not know it
     Uint8 = 1,
     Sint16 = 2,
     Uint32 = 4,
@@ -259,6 +268,15 @@ public class TypeDescriptorBlock
     public uint Timestamp { get; }
     public IReadOnlyList<ITypeDescriptor> Descriptors { get; }
 
+    public DateTime TimestampAsTime => DateTime.UnixEpoch.AddSeconds(Timestamp);
+    public Generation Generation => Timestamp switch
+    {
+        80896606 => Generation.V1,
+        6943904 or 1001862970 => Generation.V2,
+        1069178032 or 1086694421 => Generation.V3,
+        _ => Generation.Unknown
+    };
+
     public TypeDescriptorBlock(Stream stream)
     {
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
@@ -269,10 +287,10 @@ public class TypeDescriptorBlock
         if (stream.Position != startPos + totalSize)
             throw new InvalidDataException("Unexpected end position after TypeDescriptorBlock");
     }
-    
+
     public void WriteTo(CodeWriter writer)
     {
-        writer.WriteLine($"// {Timestamp} ({DateTime.UnixEpoch.AddSeconds(Timestamp).ToString(CultureInfo.InvariantCulture)}) ");
+        writer.WriteLine($"// {Timestamp} ({TimestampAsTime.ToString(CultureInfo.InvariantCulture)}) ");
         string previousName = "$";
         foreach (var descriptor in Descriptors)
         {
@@ -287,7 +305,7 @@ public class TypeDescriptorBlock
 
     private static ITypeDescriptor ReadTypeDescriptor(byte tag, BinaryReader reader)
     {
-        switch((TypeDescriptorKind)tag)
+        switch ((TypeDescriptorKind)tag)
         {
             case TypeDescriptorKind.ObjectRelations: return ReadObjectRelations(reader);
             case TypeDescriptorKind.ExternalType: return ReadExternalType(reader);
@@ -340,7 +358,7 @@ public class TypeDescriptorBlock
         var name = reader.ReadVarString();
         var unk1 = reader.ReadByte();
         var unk2 = reader.ReadUInt32();
-        byte? size= reader.ReadByte();
+        byte? size = reader.ReadByte();
         if (size > 127)
         {
             size = null;
@@ -433,5 +451,50 @@ public class TypeDescriptorBlock
                 return list;
             list.Add(readElement(tag, reader));
         }
+    }
+
+    public IEnumerable<TDescriptor> ByType<TDescriptor>() where TDescriptor : ITypeDescriptor
+        => Descriptors.OfType<TDescriptor>();
+
+    public IEnumerable<TDescriptor> AllByName<TDescriptor>(string name) where TDescriptor : ITypeDescriptor
+        => Descriptors.Where(d => d is TDescriptor && d.Name == name).Cast<TDescriptor>();
+
+    public IEnumerable<TDescriptor> AllByName<TDescriptor>(TypeDescriptorKind kind, string name) where TDescriptor : ITypeDescriptor
+        => Descriptors.Where(d => d is TDescriptor && d.DescriptorKind == kind && d.Name == name).Cast<TDescriptor>();
+
+    public TDescriptor? ByName<TDescriptor>(string name) where TDescriptor : ITypeDescriptor
+        => AllByName<TDescriptor>(name).FirstOrDefault();
+
+    private readonly HashSet<(string, string)> baseTypeCache = [];
+    public bool IsBaseType(string subType, string baseType)
+    {
+        if (baseTypeCache.Contains((subType, baseType)))
+            return true;
+        var source = ByName<ObjectRelations>(subType);
+        var target = ByName<ObjectRelations>(baseType);
+        if (source.BaseTypes is null || target.BaseTypes is null)
+            return false;
+        if (source == target)
+            return true;
+        var visited = new HashSet<string>() { subType };
+        var queue = new Queue<string>();
+        queue.Enqueue(subType);
+        while (queue.TryDequeue(out var currentTypeName))
+        {
+            var currentType = ByName<ObjectRelations>(currentTypeName);
+            if (currentType.BaseTypes is null)
+                continue;
+            foreach (var curBaseType in currentType.BaseTypes)
+            {
+                if (curBaseType == baseType)
+                {
+                    baseTypeCache.Add((subType, baseType));
+                    return true;
+                }
+                else if (visited.Add(curBaseType))
+                    queue.Enqueue(curBaseType);
+            }
+        }
+        return false;
     }
 }

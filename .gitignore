@@ -5,6 +5,7 @@
 
 games
 *.vsix
+.vscode
 
 # User-specific files
 *.rsuser
