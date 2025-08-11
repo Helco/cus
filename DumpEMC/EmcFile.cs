@@ -7,6 +7,11 @@ using System.Threading.Tasks;
 
 namespace Cus;
 
+public interface ICodeWritable
+{
+    void WriteTo(CodeWriter writer);
+}
+
 public readonly record struct EmcEmbeddedFile(
     string Name,
     ulong Offset,
@@ -16,53 +21,256 @@ public record class EmcCollection(
     string Name,
     string BaseType,
     IReadOnlyList<EmcObject> Elements)
-    : IReadOnlyList<EmcObject>
+    : IReadOnlyList<EmcObject>, ICodeWritable
 {
     public EmcObject this[int index] => Elements[index];
     public int Count => Elements.Count;
     public IEnumerator<EmcObject> GetEnumerator() => Elements.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)Elements).GetEnumerator();
+
+    public void WriteTo(CodeWriter writer)
+    {
+        if (Elements.Count == 0)
+        {
+            writer.WriteLine($"{Name} ({BaseType}) []");
+            return;
+        }
+        writer.WriteLine($"{Name} ({BaseType}) [");
+        using (var indented = writer.Indented)
+        {
+            indented.Write("- ");
+            Elements.First().WriteTo(indented);
+            foreach (var element in Elements.Skip(1))
+            {
+                indented.WriteLine();
+                indented.Write("- ");
+                element.WriteTo(indented);
+            }
+        }
+        writer.WriteLine(']');
+    }
 }
 
 public readonly record struct EmcProperty(
     string Name,
     TypeRef Type,
-    object Value);
+    object Value)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        writer.Write($"{Name} : {Type} = ");
+        if (Value is ICodeWritable writable)
+            writable.WriteTo(writer);
+        else if (Value is string str)
+            writer.Write($"\"{str}\"");
+        else
+            writer.Write(Value);
+        writer.WriteLine();
+    }
+}
 
 public readonly record struct EmcStruct(
     string TypeName,
-    IReadOnlyList<EmcProperty> Properties);
+    IReadOnlyList<EmcProperty> Properties)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        if (Properties.Count == 0)
+        {
+            writer.Write("{}");
+            return;
+        }
+        writer.WriteLine("{");
+        using (var indented = writer.Indented)
+        {
+            foreach (var prop in Properties)
+                prop.WriteTo(indented);
+        }
+        writer.Write('}');
+    }
+}
 
 public readonly record struct EmcStructArray(
-    IReadOnlyList<EmcStruct> Elements);
+    IReadOnlyList<EmcStruct> Elements)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        WriteArrayTo(writer, Elements.Select(e => e as ICodeWritable));
+    }
+
+    public static void WriteArrayTo(CodeWriter writer, IEnumerable<ICodeWritable> elements)
+    {
+        if (!elements.Any())
+        {
+            writer.Write("[]");
+            return;
+        }
+        writer.WriteLine("[");
+        using (var indented = writer.Indented)
+        {
+            int i = 0;
+            foreach (var element in elements)
+            {
+                indented.Write($"{i++}: ");
+                element.WriteTo(indented);
+                indented.WriteLine();
+            }
+        }
+        writer.Write(']');
+    }
+}
 
 public readonly record struct EmcEnumeration(
     int Value,
     string TypeName,
-    string ValueName);
+    string ValueName)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        writer.Write($"\"{ValueName}\" ({Value})");
+    }
+}
 
-public readonly record struct EmcPoint(int X, int Y);
+public readonly record struct EmcPoint(int X, int Y) : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        writer.Write(this);
+    }
 
-public readonly record struct EmcPolygon(IReadOnlyList<EmcPoint> Points);
+    public override string ToString()
+    {
+        return $"({X}, {Y})";
+    }
+}
 
-public readonly record struct EmcShape(IReadOnlyList<EmcPolygon> Polygons);
+public readonly record struct EmcPolygon(IReadOnlyList<EmcPoint> Points) : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        EmcStructArray.WriteArrayTo(writer, Points.Select(p => p as ICodeWritable));
+    }
+}
+
+public readonly record struct EmcShape(IReadOnlyList<EmcPolygon> Polygons) : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        EmcStructArray.WriteArrayTo(writer, Polygons.Select(p => p as ICodeWritable));
+    }
+}
 
 public readonly record struct EmcPathFindingShape(
     IReadOnlyList<EmcPolygon> Polygons,
     IReadOnlyList<byte> PointDepths,
-    IReadOnlyList<sbyte> PolygonOrders);
+    IReadOnlyList<sbyte> PolygonOrders)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        if (Polygons.Count == 0)
+        {
+            writer.Write("[]");
+            return;
+        }
+        writer.WriteLine('[');
+        int j = 0;
+        using (var polygonWriter = writer.Indented)
+        {
+            for (int i = 0; i < Polygons.Count; i++)
+            {
+                polygonWriter.Write($"{i}: order={PolygonOrders[i]} [");
+                if (Polygons[i].Points.Count == 0)
+                {
+                    polygonWriter.WriteLine("]");
+                    continue;
+                }
+                polygonWriter.WriteLine();
+                using (var pointWriter = polygonWriter.Indented)
+                {
+                    for (int k = 0; k < Polygons[i].Points.Count; k++)
+                    {
+                        pointWriter.WriteLine($"{k}: {Polygons[i].Points[k]} depth={PointDepths[j++]}");
+                    }
+                }
+                polygonWriter.WriteLine("]");
+            }
+        }
+        writer.Write(']');
+    }
+}
 
 public readonly record struct EmcColoredShape(
     IReadOnlyList<EmcPolygon> Polygons,
     IReadOnlyList<byte> PointBrightnesses,
     IReadOnlyList<(byte r, byte g, byte b, byte a)> PointColors,
-    IReadOnlyList<byte> PolygonUnknowns);
+    IReadOnlyList<byte> PolygonUnknowns)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        if (Polygons.Count == 0)
+        {
+            writer.Write("[]");
+            return;
+        }
+        writer.WriteLine('[');
+        int j = 0;
+        using (var polygonWriter = writer.Indented)
+        {
+            for (int i = 0; i < Polygons.Count; i++)
+            {
+                polygonWriter.Write($"{i}: unk={PolygonUnknowns[i]} [");
+                if (Polygons[i].Points.Count == 0)
+                {
+                    polygonWriter.WriteLine("]");
+                    continue;
+                }
+                polygonWriter.WriteLine();
+                using (var pointWriter = polygonWriter.Indented)
+                {
+                    for (int k = 0; k < Polygons[i].Points.Count; k++)
+                    {
+                        pointWriter.Write($"{k}: {Polygons[i].Points[k]} brightness={PointBrightnesses[j]}");
+                        var (r, g, b, a) = PointColors[j++];
+                        pointWriter.WriteLine($" color={r},{g},{b},{a}");
+                    }
+                }
+                polygonWriter.WriteLine("]");
+            }
+        }
+        writer.Write(']');
+    }
+}
 
 public record class EmcObject(
     string TypeName,
     string Name,
     IReadOnlyList<EmcProperty> Properties,
-    IReadOnlyList<EmcCollection> Collections);
+    IReadOnlyList<EmcCollection> Collections)
+    : ICodeWritable
+{
+    public void WriteTo(CodeWriter writer)
+    {
+        writer.Write($"{TypeName} {Name} {{");
+        if (Properties.Count > 0 || Collections.Count > 0)
+        {
+            using var indented = writer.Indented;
+            writer.WriteLine();
+            foreach (var prop in Properties)
+                prop.WriteTo(indented);
+            if (Properties.Any() && Collections.Any())
+                indented.WriteLine();
+            foreach (var coll in Collections)
+                coll.WriteTo(indented);
+        }
+        writer.WriteLine("}");
+    }
+}
 
 public class EmcFile
 {
@@ -205,8 +413,9 @@ public class EmcFile
             case "CString": return reader.ReadVarString();
             case "CArchivo": return reader.ReadVarString();
             case "CAnimacion": return reader.ReadVarString();
-            case "CPunto": return ReadShape(reader);
-            case "CRectangulo": return ReadShape(reader);
+            case "CPunto": return ReadShape(reader).Polygons[0].Points[0];
+            case "CRectangulo": return ReadShape(reader).Polygons[0];
+            case "CRectangulos": return ReadShape(reader);
             case "CSuelos": return ReadPathFindingShape(reader);
             case "CSuelosConColor": return ReadColoredShape(reader);
             case "CGrafico": return ReadGrafico(reader);
