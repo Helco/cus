@@ -2,7 +2,7 @@
 
 namespace Cus;
 
-internal enum CodOpCode
+public enum CodOpCode
 {
     Nop,
     Dup,
@@ -44,16 +44,16 @@ internal enum CodOpCode
     Return
 }
 
-internal readonly record struct CodOp(CodOpCode code, int value);
-internal readonly record struct CodString(int offset, string value);
-internal readonly record struct CodVariable(string name, int value);
-internal readonly record struct CodProcedure(string name, int offset, int unknown);
-internal readonly record struct CodBehavior(
+public readonly record struct CodOp(CodOpCode code, int value);
+public readonly record struct CodString(int offset, string value);
+public readonly record struct CodVariable(string name, int value);
+public readonly record struct CodProcedure(string name, int offset, int unknown);
+public readonly record struct CodBehavior(
     string name,
     IReadOnlyList<CodVariable> variables,
     IReadOnlyList<CodProcedure> procedures);
 
-internal class CodFile
+public class CodFile
 {
     public int MemorySize { get; }
     public IReadOnlyList<CodString> Strings { get; }
@@ -64,10 +64,11 @@ internal class CodFile
 
     public CodFile(string path) : this(new FileStream(path, FileMode.Open, FileAccess.Read)) { }
     public CodFile(Stream stream, bool leaveOpen = false) : this(new BinaryReader(stream, Encoding.UTF8, leaveOpen)) { }
-    public CodFile(BinaryReader br)
+    public CodFile(BinaryReader br, bool newFormat = true)
     {
         var nameBlobSize = br.ReadInt32();
-        MemorySize = br.ReadInt32();
+        if (newFormat)
+            MemorySize = br.ReadInt32();
 
         ReadOnlySpan<byte> nameBlob = br.ReadBytes(nameBlobSize).AsSpan();
         var strings = new List<CodString>();
@@ -88,6 +89,11 @@ internal class CodFile
         GlobalProcedures = ReadProcedureSet(br);
         Behaviors = ReadBehaviorSet(br);
         Ops = ReadOps(br);
+
+        if (!newFormat)
+            MemorySize = Math.Max(
+                GlobalVariables.MaxOrDefault(v => v.value),
+                Behaviors.MaxOrDefault(b => b.variables.MaxOrDefault(v => v.value))) + 4;
     }
 
     private IReadOnlyList<CodVariable> ReadVariableSet(BinaryReader br)

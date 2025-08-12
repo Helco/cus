@@ -293,16 +293,30 @@ public class EmcFile
 
     public TypeDescriptorBlock Types { get; }
     public EmcObject Root { get; }
+    public CodFile? Cod { get; }
     public IReadOnlyList<EmcEmbeddedFile> EmbeddedFiles => embeddedFiles;
 
     public EmcFile(Stream stream)
     {
+        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+        reader.ReadUInt32(); // TypeDescriptorBlock size is checked by the type descriptor block
+        var scriptOffset = reader.ReadUInt32(); // or signature, who knows? The generation field does.
+        reader.BaseStream.Position = 0;
+
         Types = new(stream);
         if (Types.Generation is not (Generation.V3 or Generation.V2 or Generation.V1))
             throw new NotSupportedException($"Unsupported EMC timestamp: {Types.Generation} ({Types.Timestamp} - {Types.TimestampAsTime})");
 
-        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
         Root = ReadObject(reader);
+
+        if (Types.Generation is not Generation.V1) // V2/V3 stores the script outside
+            return;
+        if (reader.BaseStream.Position > scriptOffset)
+            throw new InvalidDataException("EMC object part encroached onto the script part");
+        reader.BaseStream.Position = scriptOffset;
+        if (reader.ReadByte() != 1)
+            return; // no script stored in this EMC
+        Cod = new(reader, newFormat: false);
     }
 
     private EmcObject ReadObject(BinaryReader reader)

@@ -1,4 +1,5 @@
 ﻿using System;
+using static Cus.CodDumper;
 
 namespace Cus;
 
@@ -13,6 +14,29 @@ internal static class Program
         var outWriter = new StreamWriter("cus.txt");
         using var writer = new CodeWriter(outWriter);
 
+        FullDump(cod, writer, false);
+    }
+
+    public static IEnumerable<(int, T)> Indexed<T>(this IEnumerable<T> set)
+    {
+        int index = 0;
+        foreach (var value in set)
+            yield return (index++, value);
+    }
+
+    public static int MaxOrDefault<T>(this IEnumerable<T> set, Func<T, int> getter)
+    {
+        if (set.Any())
+            return set.Max(getter);
+        else
+            return default;
+    }
+}
+
+public static class CodDumper
+{
+    public static void FullDump(CodFile cod, CodeWriter writer, bool rawOps)
+    {
         writer.Write("MemorySize: ");
         writer.Write(cod.MemorySize);
         writer.WriteLine();
@@ -47,7 +71,6 @@ internal static class Program
         writer.WriteLine();
 
         writer.WriteLine("Ops: ");
-        bool rawOps = false;
         using (var indented = writer.Indented)
         {
             if (rawOps)
@@ -60,7 +83,7 @@ internal static class Program
         }
     }
 
-    private static void WriteProcedures(IReadOnlyList<CodProcedure> procedures, CodeWriter writer)
+    public static void WriteProcedures(IReadOnlyList<CodProcedure> procedures, CodeWriter writer)
     {
         writer.WriteLine("Procedures: ");
         using (var indented = writer.Indented)
@@ -78,7 +101,7 @@ internal static class Program
         }
     }
 
-    private static void WriteVariables(IReadOnlyList<CodVariable> variables, CodeWriter writer)
+    public static void WriteVariables(IReadOnlyList<CodVariable> variables, CodeWriter writer)
     {
         writer.WriteLine("Variables: ");
         using (var indented = writer.Indented)
@@ -92,12 +115,5 @@ internal static class Program
                 indented.WriteLine();
             }
         }
-    }
-
-    public static IEnumerable<(int, T)> Indexed<T>(this IEnumerable<T> set)
-    {
-        int index = 0;
-        foreach (var value in set)
-            yield return (index++, value);
     }
 }

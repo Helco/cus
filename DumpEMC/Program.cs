@@ -35,11 +35,16 @@ internal class Program
             var targetBase = Path.Combine(target, Path.GetFileNameWithoutExtension(file));
             Directory.CreateDirectory(targetBase);
             using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read);
-            EmcFile emc = new EmcFile(fileStream);
+            EmcFile emc = new(fileStream);
             using (var writer = new CodeWriter(new StreamWriter(targetBase + ".types.txt")))
                 emc.Types.WriteTo(writer);
             using (var writer = new CodeWriter(new StreamWriter(targetBase + ".emc.txt")))
                 emc.Root.WriteTo(writer);
+            if (emc.Cod is not null)
+            {
+                using (var writer = new CodeWriter(new StreamWriter(targetBase + ".script.txt")))
+                    CodDumper.FullDump(emc.Cod, writer, rawOps: false);
+            }
 
             foreach (var (fileName, offset, size) in emc.EmbeddedFiles)
             {
