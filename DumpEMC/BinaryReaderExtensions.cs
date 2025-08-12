@@ -23,4 +23,19 @@ public static class BinaryReaderExtensions
         var bytes = reader.ReadBytes(checked((int)length));
         return Encoding.Latin1.GetString(bytes);
     }
+
+    public static IEnumerable<(int, T)> Indexed<T>(this IEnumerable<T> set)
+    {
+        int index = 0;
+        foreach (var value in set)
+            yield return (index++, value);
+    }
+
+    public static int MaxOrDefault<T>(this IEnumerable<T> set, Func<T, int> getter)
+    {
+        if (set.Any())
+            return set.Max(getter);
+        else
+            return default;
+    }
 }
