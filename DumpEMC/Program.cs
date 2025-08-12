@@ -20,6 +20,8 @@ internal class Program
         DumpAll(@"E:\SteamLibrary\steamapps\common\Mamelucos\Archivos\Mapas\", "mamelucos");
         DumpAll(@"E:\SteamLibrary\steamapps\common\Vaqueros\", "vaqueros");
         DumpAll(@"E:\SteamLibrary\steamapps\common\Terror\", "terror");
+        DumpAll(@"C:\dev\cusg-aventura-orginal\disk1\Install\", "aventura-orginal-disk1");
+        DumpAll(@"C:\dev\cusg-aventura-orginal\disk2\Install\", "aventura-orginal-disk2");
     }
 
     private static void DumpAll(string source, string target)
