@@ -7,12 +7,6 @@ internal class Program
 
     static void Main(string[] args)
     {
-        DumpAll(@"C:\dev\cusg\Mapas\", "aventura-german");
-        DumpAll(@"C:\dev\cusg-aventura-orginal\disk1\Install\", "aventura-orginal-disk1");
-    }
-
-    static void Main2(string[] args)
-    {
         Console.WriteLine("Hello, World!");
 
         DumpAll(@"C:\dev\cusg\Mapas\", "aventura-german");
