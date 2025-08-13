@@ -41,6 +41,8 @@ internal class Program
 
     private static void DumpAll(string source, string target)
     {
+        TypeDescriptorBlock? globalTypes = null;
+
         Directory.CreateDirectory(target);
         foreach (var file in Directory.GetFiles(source))
         {
@@ -58,8 +60,10 @@ internal class Program
             if (emc.Cod is not null)
             {
                 using (var writer = new CodeWriter(new StreamWriter(targetBase + ".script.txt")))
-                    CodDumper.FullDump(emc.Cod, writer, rawOps: false);
+                    CodDumper.FullDump(emc.Cod, emc.Types, writer, rawOps: false);
             }
+            if (file.Contains("global", StringComparison.InvariantCultureIgnoreCase) && globalTypes is null)
+                globalTypes = emc.Types;
 
             continue;
             foreach (var (fileName, offset, size) in emc.EmbeddedFiles)
@@ -76,13 +80,18 @@ internal class Program
             }
         }
 
-        foreach (var scriptRelPath in ScriptPaths)
+        if (globalTypes is null)
+            Console.WriteLine("Cannot decompile external script file without global.emc file");
+        else
         {
-            var scriptSourcePath = Path.Combine(source, scriptRelPath);
-            if (!File.Exists(scriptSourcePath)) continue;
-            CodFile cod = new(scriptSourcePath);
-            using var writer = new CodeWriter(new StreamWriter(Path.Combine(target, Path.GetFileNameWithoutExtension(scriptRelPath) + ".script.txt")));
-            CodDumper.FullDump(cod, writer, rawOps: false);
+            foreach (var scriptRelPath in ScriptPaths)
+            {
+                var scriptSourcePath = Path.Combine(source, scriptRelPath);
+                if (!File.Exists(scriptSourcePath)) continue;
+                CodFile cod = new(scriptSourcePath);
+                using var writer = new CodeWriter(new StreamWriter(Path.Combine(target, Path.GetFileNameWithoutExtension(scriptRelPath) + ".script.txt")));
+                CodDumper.FullDump(cod, globalTypes, writer, rawOps: false);
+            }
         }
     }
 

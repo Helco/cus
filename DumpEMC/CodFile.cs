@@ -236,7 +236,7 @@ public class CodFile
 
 public static class CodDumper
 {
-    public static void FullDump(CodFile cod, CodeWriter writer, bool rawOps)
+    public static void FullDump(CodFile cod, TypeDescriptorBlock types, CodeWriter writer, bool rawOps)
     {
         writer.Write("MemorySize: ");
         writer.Write(cod.MemorySize);
@@ -280,7 +280,7 @@ public static class CodDumper
                     indented.WriteLine($"{index:D5}: {rawOpCode:D2} {opCode} {arg}");
             }
             else
-                SimpleDecompiler.Decompile(cod, indented, false);
+                SimpleDecompiler.Decompile(cod, types, indented, false);
         }
     }
 

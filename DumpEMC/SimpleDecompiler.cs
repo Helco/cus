@@ -8,10 +8,11 @@ namespace Cus;
 
 internal class SimpleDecompiler
 {
-    public static void Decompile(CodFile cod, CodeWriter writer, bool dumpInstructions) =>
-        new SimpleDecompiler(cod, writer, dumpInstructions).Decompile();
+    public static void Decompile(CodFile cod, TypeDescriptorBlock types, CodeWriter writer, bool dumpInstructions) =>
+        new SimpleDecompiler(cod, types, writer, dumpInstructions).Decompile();
 
     private readonly CodFile cod;
+    private readonly NamedFunctionSignature[] kernelCalls;
     private readonly CodeWriter writer;
     private readonly bool dumpInstructions;
     private readonly string?[] labels;
@@ -19,9 +20,10 @@ internal class SimpleDecompiler
     private readonly Dictionary<int, string> variableNames;
     private readonly Dictionary<int, string> strings;
 
-    private SimpleDecompiler(CodFile cod, CodeWriter writer, bool dumpInstructions)
+    private SimpleDecompiler(CodFile cod, TypeDescriptorBlock types, CodeWriter writer, bool dumpInstructions)
     {
         this.cod = cod;
+        kernelCalls = [.. types.Descriptors.OfType<NamedFunctionSignature>()];
         this.writer = writer;
         this.dumpInstructions = dumpInstructions;
         labels = new string?[cod.Ops.Count];
@@ -149,10 +151,11 @@ internal class SimpleDecompiler
         {
             var (_, op, arg) = cod.Ops[offset];
 
-            if (isStrongLabel[offset] && stack.Count > 0) {
+            if (isStrongLabel[offset] && stack.Count > 0)
+            {
                 writer.WriteLine($"// WARNING: Arrived with {stack.Count} stack entries");
                 foreach (var entry in stack.Reverse())
-                    writer.WriteLine($"//  - {entry.text}"); 
+                    writer.WriteLine($"//  - {entry.text}");
                 stack.Clear();
             }
             if (isStrongLabel[offset] && offset != 0)
@@ -167,7 +170,7 @@ internal class SimpleDecompiler
             }
 
             Expression value;
-            switch(op)
+            switch (op)
             {
                 case CodOpCode.Nop: break;
                 case CodOpCode.Dup:
@@ -201,7 +204,8 @@ internal class SimpleDecompiler
                 case CodOpCode.Deref:
                     if (stack.Count == 0)
                         writer.WriteLine("// ERROR: Arrived without stack entry for deref");
-                    else if (stack.Peek().type != ExpressionType.Address) {
+                    else if (stack.Peek().type != ExpressionType.Address)
+                    {
                         writer.WriteLine("// ERROR: Arrived without address on stack for deref");
                         stack.Push(GeneralExpression($"#deref( {stack.Pop().text} )", false));
                     }
@@ -459,8 +463,11 @@ internal class SimpleDecompiler
         "lerpCamXYZ",
         "lerpCamToObjectKeepingZ"
     };
-    private string GetKernelProcName(int value) => value < 1 || value > KernelProcNames.Length
+    private string GetKernelProcName(int value) => value < 1 || value > kernelCalls.Length
+        ? $"invalid kernel({value})"
+        : kernelCalls[value - 1].Name;
+    /*private string GetKernelProcName(int value) => value < 1 || value > KernelProcNames.Length
         ? $"invalid kernel({value})"
         : KernelProcNames[value - 1] == "nop" ? KernelProcNames[value - 1] + value
-        : KernelProcNames[value - 1];
+        : KernelProcNames[value - 1];*/
 }
