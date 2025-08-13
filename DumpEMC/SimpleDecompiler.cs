@@ -112,16 +112,36 @@ internal class SimpleDecompiler
         needsBrackets = false
     };
 
-    private Expression AddressExpression(int address) => new()
+    private Expression AddressExpression(int address)
     {
-        type = ExpressionType.Address,
-        value = address,
-        text = variableNames.TryGetValue(address, out var name)
-            ? $"&{name}" : $"invalid address({address})",
-        needsBrackets = false
-    };
+        string text;
+        if (variableNames.TryGetValue(address, out var name))
+            text = name;
+        else if (cod.Generation is Generation.V1 && strings.TryGetValue(address, out text!))
+        {
+            return new()
+            {
+                type = ExpressionType.String,
+                value = address,
+                text = $"\"{text}\"",
+                needsBrackets = false
+            };
+        }
+        else
+            text = $"invalid-address({address})";
 
-    private Expression DynAddressExpression(Expression address) => new()
+        return new()
+        {
+            type = ExpressionType.Address,
+            value = address,
+            text = "&" + text,
+            needsBrackets = false
+        };
+    }
+
+    private Expression DynAddressExpression(Expression address) => address.type is ExpressionType.Number
+    ? AddressExpression(address.value) // actually still a static address expression
+    : new()
     {
         type = ExpressionType.Expression,
         value = 0,
@@ -210,11 +230,11 @@ internal class SimpleDecompiler
                         stack.Push(GeneralExpression($"#deref( {stack.Pop().text} )", false));
                     }
                     else
-                        stack.Push(GeneralExpression(stack.Pop().text.Substring(1), false));
+                        stack.Push(GeneralExpression(stack.Pop().text[1..], false));
                     break;
                 case CodOpCode.Pop1:
                     if (stack.Count < 1)
-                        writer.WriteLine($"// ERROR: Arrived with {stack.Count} stack entries, attempting to pop {arg}");
+                        writer.WriteLine($"// ERROR: Arrived with {stack.Count} stack entries, attempting to pop 1");
                     else
                         stack.Pop();
                     break;
@@ -325,7 +345,10 @@ internal class SimpleDecompiler
                     popNumbers(out right, out left, "BitOr");
                     stack.Push(GeneralExpression($"{left.BracketedText} | {right.BracketedText}"));
                     break;
-                case CodOpCode.Return:
+                case CodOpCode.ReturnNone:
+                    indented.WriteLine($"return");
+                    break;
+                case CodOpCode.ReturnValue:
                     popNumber(out value, "return");
                     indented.WriteLine($"return {value.text}");
                     break;
@@ -363,7 +386,7 @@ internal class SimpleDecompiler
                 writer.WriteLine($"// WARNING: Expected numeric expression for {context}");
         }
 
-        bool extractArgsAndRets(ref int offset, out Expression[] args)
+        bool extractArgsV3(ref int offset, out Expression[] args)
         {
             args = Array.Empty<Expression>();
             if (offset + 1 >= cod.Ops.Count || cod.Ops[offset + 1].code != CodOpCode.PopN)
@@ -383,19 +406,67 @@ internal class SimpleDecompiler
             offset++;
             if (dumpInstructions)
                 writer.WriteLine($"\t\t{offset}: PopN {cod.Ops[offset].value}");
-
-            if (offset + 1 < cod.Ops.Count && cod.Ops[offset + 1].code == CodOpCode.PopN)
-            {
-                if (cod.Ops[offset + 1].value != 1)
-                    writer.WriteLine("// ERROR: Expected at most one return value to pop");
-                offset++;
-                if (dumpInstructions)
-                    writer.WriteLine($"\t\t{offset}: PopN {cod.Ops[offset].value}");
-                return false;
-            }
-            else
-                return true;
+            return true;
         }
+
+        bool extractRets(ref int offset)
+        {
+            if (offset + 1 >= cod.Ops.Count)
+                return true;
+            int popCount = cod.Ops[offset + 1].code switch
+            {
+                CodOpCode.Pop1 => 1,
+                CodOpCode.PopN => cod.Ops[offset + 1].value,
+                _ => -1
+            };
+            if (popCount < 0)
+                return true;
+            if (popCount != 1)
+                writer.WriteLine("// ERROR: Expected at most one return value to pop");
+            offset++;
+            if (dumpInstructions)
+                writer.WriteLine($"\t\t{offset}: {cod.Ops[offset].code} {cod.Ops[offset].value}");
+            return false;
+        }
+
+        bool extractArgsAndRetsV3(ref int offset, out Expression[] args)
+        {
+            return extractArgsV3(ref offset, out args) && extractRets(ref offset);
+        }
+
+        bool extractArgsAndRetsV1(ref int offset, out Expression[] args)
+        {
+            args = [];
+            bool isCall = cod.Ops[offset].code is CodOpCode.Call;
+            if (isCall)
+                goto exit;
+            var kernelProcI = cod.Ops[offset].value - 1;
+            if (kernelProcI < 0 || kernelProcI >= kernelCalls.Length)
+            {
+                writer.WriteLine("// WARNING: Cannot determine arguments of invalid kernel proc");
+                goto exit;
+            }
+            var kernelProc = kernelCalls[kernelProcI];
+            args = [.. Enumerable.Repeat(
+                GeneralExpression("ERROR", false), kernelProc.Signature.Parameters.Count)];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (!stack.TryPop(out args[i]))
+                {
+                    writer.WriteLine($"// ERROR: Expected {args.Length} arguments, but the stack only had {i}");
+                    goto exit;
+                }
+            }
+            
+            exit:
+            return extractRets(ref offset);
+        }
+
+        bool extractArgsAndRets(ref int offset, out Expression[] args) => cod.Generation switch
+        {
+            Generation.V1 => extractArgsAndRetsV1(ref offset, out args),
+            _ => extractArgsAndRetsV3(ref offset, out args)
+        };
     }
 
     private void Decompile()

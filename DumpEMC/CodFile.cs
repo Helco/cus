@@ -34,7 +34,8 @@ public enum CodOpCode
     NotEquals,
     BitAnd,
     BitOr,
-    Return,
+    ReturnNone,
+    ReturnValue,
     InvalidOp
 }
 
@@ -189,7 +190,7 @@ public class CodFile
         CodOpCode.Crash,
         CodOpCode.Crash,
         CodOpCode.Crash,
-        CodOpCode.Return
+        CodOpCode.ReturnValue
     ];
 
     private static readonly CodOpCode[] V1Ops =
@@ -230,7 +231,7 @@ public class CodFile
         CodOpCode.Nop,
         CodOpCode.Nop,
         CodOpCode.Nop,
-        CodOpCode.Return
+        CodOpCode.ReturnNone
     ];
 }
 
