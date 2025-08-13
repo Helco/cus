@@ -316,7 +316,7 @@ public class EmcFile
         reader.BaseStream.Position = scriptOffset;
         if (reader.ReadByte() != 1)
             return; // no script stored in this EMC
-        Cod = new(reader, newFormat: false);
+        Cod = new(reader, Types.Generation);
     }
 
     private EmcObject ReadObject(BinaryReader reader)

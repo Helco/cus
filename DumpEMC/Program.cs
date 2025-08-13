@@ -4,7 +4,14 @@ namespace Cus;
 
 internal class Program
 {
+
     static void Main(string[] args)
+    {
+        DumpAll(@"C:\dev\cusg\Mapas\", "aventura-german");
+        DumpAll(@"C:\dev\cusg-aventura-orginal\disk1\Install\", "aventura-orginal-disk1");
+    }
+
+    static void Main2(string[] args)
     {
         Console.WriteLine("Hello, World!");
 
@@ -23,6 +30,14 @@ internal class Program
         DumpAll(@"C:\dev\cusg-aventura-orginal\disk1\Install\", "aventura-orginal-disk1");
         DumpAll(@"C:\dev\cusg-aventura-orginal\disk2\Install\", "aventura-orginal-disk2");
     }
+
+    private static readonly string[] ScriptPaths =
+    [
+        "../Script/MORTADELO.COD",
+        "../Script/FILE.COD",
+        "../Script/FILEMON.COD",
+        "../Script/SCRIPT.COD"
+    ];
 
     private static void DumpAll(string source, string target)
     {
@@ -46,6 +61,7 @@ internal class Program
                     CodDumper.FullDump(emc.Cod, writer, rawOps: false);
             }
 
+            continue;
             foreach (var (fileName, offset, size) in emc.EmbeddedFiles)
             {
                 var bytes = ArrayPool<byte>.Shared.Rent((int)size);
@@ -58,6 +74,15 @@ internal class Program
                 targetStream.Write(bytes, 0, (int)size);
                 ArrayPool<byte>.Shared.Return(bytes);
             }
+        }
+
+        foreach (var scriptRelPath in ScriptPaths)
+        {
+            var scriptSourcePath = Path.Combine(source, scriptRelPath);
+            if (!File.Exists(scriptSourcePath)) continue;
+            CodFile cod = new(scriptSourcePath);
+            using var writer = new CodeWriter(new StreamWriter(Path.Combine(target, Path.GetFileNameWithoutExtension(scriptRelPath) + ".script.txt")));
+            CodDumper.FullDump(cod, writer, rawOps: false);
         }
     }
 

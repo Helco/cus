@@ -59,7 +59,7 @@ internal class SimpleDecompiler
             foreach (var proc in beh.procedures)
                 SetLabel(proc.offset - 1, $"{beh.name}::{proc.name}", isStrongName: true);
         }
-        foreach (var (offset, (code, value)) in cod.Ops.Indexed())
+        foreach (var (offset, (_, code, value)) in cod.Ops.Indexed())
         {
             if (code is CodOpCode.Jump or CodOpCode.JumpIfTrue or CodOpCode.JumpIfFalse)
                 SetLabel(offset + value, $"loc_{offset + value}", isStrongName: false);
@@ -119,6 +119,14 @@ internal class SimpleDecompiler
         needsBrackets = false
     };
 
+    private Expression DynAddressExpression(Expression address) => new()
+    {
+        type = ExpressionType.Expression,
+        value = 0,
+        text = $"&( {address.text} )",
+        needsBrackets = false
+    };
+
     private Expression GeneralExpression(string text, bool needsBrackets = true) => new()
     {
         type = ExpressionType.Expression,
@@ -139,10 +147,12 @@ internal class SimpleDecompiler
         Stack<Expression> stack = new();
         for (int offset = 0; offset < cod.Ops.Count; offset++)
         {
-            var (op, arg) = cod.Ops[offset];
+            var (_, op, arg) = cod.Ops[offset];
 
             if (isStrongLabel[offset] && stack.Count > 0) {
                 writer.WriteLine($"// WARNING: Arrived with {stack.Count} stack entries");
+                foreach (var entry in stack.Reverse())
+                    writer.WriteLine($"//  - {entry.text}"); 
                 stack.Clear();
             }
             if (isStrongLabel[offset] && offset != 0)
@@ -180,6 +190,14 @@ internal class SimpleDecompiler
                     break;
                 case CodOpCode.PushAddr: stack.Push(AddressExpression(arg)); break;
                 case CodOpCode.PushValue: stack.Push(NumberExpression(arg)); break;
+                case CodOpCode.PushDynAddr:
+                    if (stack.Count == 0)
+                        writer.WriteLine("// ERROR: Arrived without stack entry for dyn address push");
+                    else if (stack.Peek().type is ExpressionType.String)
+                        writer.WriteLine($"// ERROR: Arrived at dyn address push with unexpected {stack.Peek().type}");
+                    else
+                        stack.Push(DynAddressExpression(stack.Pop()));
+                    break;
                 case CodOpCode.Deref:
                     if (stack.Count == 0)
                         writer.WriteLine("// ERROR: Arrived without stack entry for deref");
@@ -189,6 +207,12 @@ internal class SimpleDecompiler
                     }
                     else
                         stack.Push(GeneralExpression(stack.Pop().text.Substring(1), false));
+                    break;
+                case CodOpCode.Pop1:
+                    if (stack.Count < 1)
+                        writer.WriteLine($"// ERROR: Arrived with {stack.Count} stack entries, attempting to pop {arg}");
+                    else
+                        stack.Pop();
                     break;
                 case CodOpCode.PopN:
                     if (stack.Count < arg || arg < 0)
@@ -212,7 +236,6 @@ internal class SimpleDecompiler
                     stack.Push(value);
                     break;
                 case CodOpCode.LoadString:
-                case CodOpCode.LoadString2:
                     popNumber(out value, "LoadString");
                     if (value.type != ExpressionType.Number)
                         stack.Push(StringExpression(value.text));

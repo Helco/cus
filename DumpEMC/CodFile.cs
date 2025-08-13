@@ -2,21 +2,20 @@
 
 namespace Cus;
 
+// the semantic, cross-generation op code
 public enum CodOpCode
 {
     Nop,
     Dup,
     PushAddr,
+    PushDynAddr,
     PushValue,
     Deref,
-    Crash5,
+    Crash,
+    Pop1,
     PopN,
     Store,
-    Crash8,
-    Crash9,
     LoadString,
-    LoadString2,
-    Crash12,
     Call,
     KernelProc,
     JumpIfFalse,
@@ -25,8 +24,6 @@ public enum CodOpCode
     Negate,
     BooleanNot,
     Mul,
-    Crash21,
-    Crash22,
     Add,
     Sub,
     Less,
@@ -37,14 +34,11 @@ public enum CodOpCode
     NotEquals,
     BitAnd,
     BitOr,
-    Crash33,
-    Crash34,
-    Crash35,
-    Crash36,
-    Return
+    Return,
+    InvalidOp
 }
 
-public readonly record struct CodOp(CodOpCode code, int value);
+public readonly record struct CodOp(int rawCode, CodOpCode code, int value);
 public readonly record struct CodString(int offset, string value);
 public readonly record struct CodVariable(string name, int value);
 public readonly record struct CodProcedure(string name, int offset, int unknown);
@@ -55,19 +49,24 @@ public readonly record struct CodBehavior(
 
 public class CodFile
 {
+    private readonly CodOpCode[] rawOpsToCode;
     public int MemorySize { get; }
     public IReadOnlyList<CodString> Strings { get; }
     public IReadOnlyList<CodVariable> GlobalVariables { get; }
     public IReadOnlyList<CodProcedure> GlobalProcedures { get; }
     public IReadOnlyList<CodBehavior> Behaviors { get; }
     public IReadOnlyList<CodOp> Ops { get; }
+    public Generation Generation { get; }
 
     public CodFile(string path) : this(new FileStream(path, FileMode.Open, FileAccess.Read)) { }
     public CodFile(Stream stream, bool leaveOpen = false) : this(new BinaryReader(stream, Encoding.UTF8, leaveOpen)) { }
-    public CodFile(BinaryReader br, bool newFormat = true)
+    public CodFile(BinaryReader br, Generation generation = Generation.V3)
     {
+        Generation = generation;
+        rawOpsToCode = generation is Generation.V1 ? V1Ops : V3Ops;
+
         var nameBlobSize = br.ReadInt32();
-        if (newFormat)
+        if (generation is not Generation.V1)
             MemorySize = br.ReadInt32();
 
         ReadOnlySpan<byte> nameBlob = br.ReadBytes(nameBlobSize).AsSpan();
@@ -76,7 +75,7 @@ public class CodFile
         int nextNullI = nameBlob.IndexOf((byte)0);
         while (nextNullI >= 0)
         {
-            strings.Add(new (offset, Encoding.Latin1.GetString(nameBlob[..nextNullI])));
+            strings.Add(new(offset, Encoding.Latin1.GetString(nameBlob[..nextNullI])));
             offset += nextNullI + 1;
             nameBlob = nameBlob[(nextNullI + 1)..];
             nextNullI = nameBlob.IndexOf((byte)0);
@@ -90,7 +89,7 @@ public class CodFile
         Behaviors = ReadBehaviorSet(br);
         Ops = ReadOps(br);
 
-        if (!newFormat)
+        if (generation is Generation.V1)
             MemorySize = Math.Max(
                 GlobalVariables.MaxOrDefault(v => v.value),
                 Behaviors.MaxOrDefault(b => b.variables.MaxOrDefault(v => v.value))) + 4;
@@ -128,7 +127,11 @@ public class CodFile
         int count = br.ReadInt32();
         var ops = new CodOp[count];
         for (int i = 0; i < count; i++)
-            ops[i] = new((CodOpCode)br.ReadInt32(), br.ReadInt32());
+        {
+            int rawCode = br.ReadInt32();
+            var code = rawCode < rawOpsToCode.Length ? rawOpsToCode[rawCode] : CodOpCode.InvalidOp;
+            ops[i] = new(rawCode, code, br.ReadInt32());
+        }
         return ops;
     }
 
@@ -146,6 +149,89 @@ public class CodFile
         var length = checked((int)ReadVarInt(br));
         return Encoding.Latin1.GetString(br.ReadBytes(length));
     }
+
+    private static readonly CodOpCode[] V3Ops =
+    [
+        CodOpCode.Nop,
+        CodOpCode.Dup,
+        CodOpCode.PushAddr,
+        CodOpCode.PushValue,
+        CodOpCode.Deref,
+        CodOpCode.Crash,
+        CodOpCode.PopN,
+        CodOpCode.Store,
+        CodOpCode.Crash,
+        CodOpCode.Crash,
+        CodOpCode.LoadString,
+        CodOpCode.LoadString,
+        CodOpCode.Crash,
+        CodOpCode.Call,
+        CodOpCode.KernelProc,
+        CodOpCode.JumpIfFalse,
+        CodOpCode.JumpIfTrue,
+        CodOpCode.Jump,
+        CodOpCode.Negate,
+        CodOpCode.BooleanNot,
+        CodOpCode.Mul,
+        CodOpCode.Crash,
+        CodOpCode.Crash,
+        CodOpCode.Add,
+        CodOpCode.Sub,
+        CodOpCode.Less,
+        CodOpCode.Greater,
+        CodOpCode.LessEquals,
+        CodOpCode.GreaterEquals,
+        CodOpCode.Equals,
+        CodOpCode.NotEquals,
+        CodOpCode.BitAnd,
+        CodOpCode.BitOr,
+        CodOpCode.Crash,
+        CodOpCode.Crash,
+        CodOpCode.Crash,
+        CodOpCode.Crash,
+        CodOpCode.Return
+    ];
+
+    private static readonly CodOpCode[] V1Ops =
+    [
+        CodOpCode.Nop,
+        CodOpCode.Dup,
+        CodOpCode.PushAddr,
+        CodOpCode.PushValue,
+        CodOpCode.Deref,
+        CodOpCode.Nop,
+        CodOpCode.Pop1,
+        CodOpCode.Store,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.PushDynAddr,
+        CodOpCode.Nop,
+        CodOpCode.Call,
+        CodOpCode.KernelProc,
+        CodOpCode.JumpIfFalse,
+        CodOpCode.JumpIfTrue,
+        CodOpCode.Jump,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Add,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Equals,
+        CodOpCode.NotEquals,
+        CodOpCode.BitAnd,
+        CodOpCode.BitOr,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Nop,
+        CodOpCode.Return
+    ];
 }
 
 public static class CodDumper
@@ -190,8 +276,8 @@ public static class CodDumper
         {
             if (rawOps)
             {
-                foreach (var (index, (opCode, arg)) in cod.Ops.Indexed())
-                    indented.WriteLine($"{index:D5}: {opCode} {arg}");
+                foreach (var (index, (rawOpCode, opCode, arg)) in cod.Ops.Indexed())
+                    indented.WriteLine($"{index:D5}: {rawOpCode:D2} {opCode} {arg}");
             }
             else
                 SimpleDecompiler.Decompile(cod, indented, false);
@@ -232,4 +318,3 @@ public static class CodDumper
         }
     }
 }
-
