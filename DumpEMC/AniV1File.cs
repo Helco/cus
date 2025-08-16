@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
+using AnimatedGif;
 
 namespace Cus;
 
@@ -108,7 +110,7 @@ public class AniImage
         return rgba;
     }
 
-    public void DrawInto(byte[] rgba, int pitch, SPoint offset, byte alpha)
+    public void DrawInto(byte[] rgba, int pitch, SPoint offset, byte alpha, bool isArgb = false)
     {
         int fullHeight = rgba.Length / pitch;
         int fullWidth = pitch / 4;
@@ -144,19 +146,21 @@ public class AniImage
                     if (srcX >= srcW)
                         goto nextLine;
                     outLine[srcX * 4 + 3] = alpha;
+                    var ri = isArgb ? 2 : 0;
+                    var bi = isArgb ? 0 : 2;
                     if (IsPaletted)
                     {
                         var color = pixelData[segment.DataOffset + i];
-                        outLine[srcX * 4 + 0] = palette[color * 3 + 2];
+                        outLine[srcX * 4 + ri] = palette[color * 3 + 2];
                         outLine[srcX * 4 + 1] = palette[color * 3 + 1];
-                        outLine[srcX * 4 + 2] = palette[color * 3 + 0];
+                        outLine[srcX * 4 + bi] = palette[color * 3 + 0];
                     }
                     else
                     {
                         var colorI = segment.DataOffset + i * 3;
-                        outLine[srcX * 4 + 0] = pixelData[colorI + 2];
+                        outLine[srcX * 4 + ri] = pixelData[colorI + 2];
                         outLine[srcX * 4 + 1] = pixelData[colorI + 1];
-                        outLine[srcX * 4 + 2] = pixelData[colorI + 0];
+                        outLine[srcX * 4 + bi] = pixelData[colorI + 0];
                     }
                     srcX++;
                 }
@@ -251,6 +255,7 @@ public class AniV1File
     public readonly byte Alpha;
     public readonly IReadOnlyList<AniSprite> Sprites;
     public readonly IReadOnlyList<AniFrame> Frames;
+    private readonly int[] spriteOrder;
 
     public AniV1File(Stream stream, bool leaveOpen = true)
     {
@@ -281,6 +286,11 @@ public class AniV1File
         Frames = frames;
         for (int i = 0; i < frames.Length; i++)
             frames[i] = new(reader);
+
+        spriteOrder = [.. Enumerable
+            .Range(0, sprites.Length)
+            .Reverse()
+            .OrderByDescending(i => sprites[i].Order)];
     }
 
     public void WriteTo(CodeWriter writer)
@@ -329,12 +339,13 @@ public class AniV1File
     {
         ArgumentOutOfRangeException.ThrowIfNegative(frameI);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(frameI, Frames.Count);
-        byte[] rgba = new byte[TotalSize.X * TotalSize.Y * 4];
-        RenderFrameInto(frameI, rgba);
+        var frameSize = GetFrameSize(frameI);
+        byte[] rgba = new byte[frameSize.X * frameSize.Y * 4];
+        RenderFrameInto(frameI, rgba, frameSize);
         return rgba;        
     }
 
-    private void RenderFrameInto(int frameI, byte[] rgba)
+    private (SPoint min, SPoint max) GetFrameBounds(int frameI)
     {
         var frame = Frames[frameI];
         SPoint frameMin = new(9999, 9999), frameMax = new(-9999, -9999);
@@ -347,17 +358,55 @@ public class AniV1File
             frameMin = SPoint.Min(frameMin, image.DrawOffset);
             frameMax = SPoint.Max(frameMax, image.DrawOffset + image.Size);
         }
+        return (frameMin, frameMax);
+    }
+
+    private SPoint GetFrameSize(int frameI)
+    {
+        var (frameMin, frameMax) = GetFrameBounds(frameI);
+        return frameMax - frameMin + new SPoint(1, 1);
+    }
+
+    private void RenderFrameInto(int frameI, byte[] rgba, SPoint outSize, bool isArgb = false)
+    {
+        var (frameMin, frameMax) = GetFrameBounds(frameI);
         if (frameMin.X > frameMax.X || frameMin.Y > frameMax.Y)
             return;
 
-        foreach (var (spriteI, sprite) in Sprites.Indexed().Reverse())
+        var frame = Frames[frameI];
+        Array.Fill<byte>(rgba, 0);
+        for (int i = 0; i < Sprites.Count; i++)
         {
+            var spriteI = spriteOrder[i];
+            var sprite = Sprites[spriteI];
             var imageI = frame.ImageIndices[spriteI];
             if (imageI <= 0)
                 continue;
             var image = sprite.Images[imageI - 1];
             var offset = image.DrawOffset - frameMin;
-            image.DrawInto(rgba, TotalSize.X * 4, offset, Alpha);
+            image.DrawInto(rgba, outSize.X * 4, offset, Alpha, isArgb);
+        }
+    }
+
+    public unsafe void ConvertToFile(string targetPath)
+    {
+        using var gif = AnimatedGif.AnimatedGif.Create(targetPath, (int)(TotalDuration / Frames.Count));
+        var maxFrameSize = Enumerable
+            .Range(0, Frames.Count)
+            .Select(GetFrameSize)
+            .Aggregate(SPoint.Max);
+        var argb = new byte[maxFrameSize.X * maxFrameSize.Y * 4];
+        fixed (byte* argbPtr = argb)
+        {
+            using var image = new Bitmap(
+                maxFrameSize.X, maxFrameSize.Y, maxFrameSize.X * 4,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb,
+                (IntPtr)argbPtr);
+            foreach (var (frameI, frame) in Frames.Indexed())
+            {
+                RenderFrameInto(frameI, argb, maxFrameSize, isArgb: true);
+                gif.AddFrame(image, delay: frame.Duration, quality: GifQuality.Bit8);
+            }
         }
     }
 }

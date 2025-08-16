@@ -131,23 +131,33 @@ internal class Program
         aniFile.WriteTo(descrWriter);
         ArrayPool<byte>.Shared.Return(bytes);
 
-        targetPath = Path.ChangeExtension(targetPath, null);
-        Directory.CreateDirectory(Path.Combine(targetPath, "images"));
-        foreach (var (spriteI, sprite) in aniFile.Sprites.Indexed())
+        const bool CreateGif = true;
+#pragma warning disable CS0162 // Unreachable code detected
+        if (CreateGif)
         {
-            foreach (var (imageI, image) in sprite.Images.Indexed())
+            aniFile.ConvertToFile(targetPath + ".gif");
+        }
+        else
+        {
+            targetPath = Path.ChangeExtension(targetPath, null);
+            Directory.CreateDirectory(Path.Combine(targetPath, "images"));
+            foreach (var (spriteI, sprite) in aniFile.Sprites.Indexed())
             {
-                var imagePath = Path.Combine(targetPath, "images", $"img-{spriteI}-{imageI}.png");
-                image.ConvertToFile(imagePath, aniFile.Alpha);
+                foreach (var (imageI, image) in sprite.Images.Indexed())
+                {
+                    var imagePath = Path.Combine(targetPath, "images", $"img-{spriteI}-{imageI}.png");
+                    image.ConvertToFile(imagePath, aniFile.Alpha);
+                }
+            }
+
+            Directory.CreateDirectory(Path.Combine(targetPath, "frames"));
+            for (int frameI = 0; frameI < aniFile.Frames.Count; frameI++)
+            {
+                var imagePath = Path.Combine(targetPath, "frames", $"frame-{frameI}.png");
+                aniFile.ConvertFrameToFile(frameI, imagePath);
             }
         }
-
-        Directory.CreateDirectory(Path.Combine(targetPath, "frames"));
-        for (int frameI = 0; frameI < aniFile.Frames.Count; frameI++)
-        {
-            var imagePath = Path.Combine(targetPath, "frames", $"frame-{frameI}.png");
-            aniFile.ConvertFrameToFile(frameI, imagePath);
-        }
+#pragma warning restore CS0162 // Unreachable code detected
     }
 
     private static void DumpTypeDescriptors(string source, string target)
