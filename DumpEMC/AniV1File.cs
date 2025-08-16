@@ -1,10 +1,11 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
 
 namespace Cus;
 
@@ -20,6 +21,18 @@ public readonly record struct SPoint(short X, short Y)
         : $"({X}, {Y})";
 
     public override string ToString() => ToString(false);
+
+    public static SPoint operator +(SPoint a, SPoint b) =>
+        checked(new((short)(a.X + b.X), (short)(a.Y + b.Y)));
+
+    public static SPoint operator -(SPoint a, SPoint b) =>
+        checked(new((short)(a.X - b.X), (short)(a.Y - b.Y)));
+
+    public static SPoint Min(SPoint a, SPoint b) =>
+        new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y));
+
+    public static SPoint Max(SPoint a, SPoint b) =>
+        new(Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
 }
 
 public readonly record struct AniSegment(ushort X, ushort Width, uint DataOffset);
@@ -63,7 +76,9 @@ public class AniImage
                 ushort segmentCount = reader.ReadUInt16();
                 var segments = new AniSegment[segmentCount];
                 for (int j = 0; j < segmentCount; j++)
+                {
                     segments[j] = new(reader.ReadUInt16(), reader.ReadUInt16(), reader.ReadUInt32());
+                }
                 lines[i] = new(segments);
             }
         }
@@ -84,6 +99,78 @@ public class AniImage
             writer.Write("paletted ");
         var segmentCount = lines.Sum(l => l.Segments.Length);
         writer.WriteLine($"{PixelCount} pixels in {segmentCount} segments");
+    }
+
+    public byte[] ConvertToRGBA(byte alpha)
+    {
+        byte[] rgba = new byte[Size.X * Size.Y * 4];
+        DrawInto(rgba, Size.X * 4, new(0, 0), alpha);
+        return rgba;
+    }
+
+    public void DrawInto(byte[] rgba, int pitch, SPoint offset, byte alpha)
+    {
+        int fullHeight = rgba.Length / pitch;
+        int fullWidth = pitch / 4;
+        int srcY = 0;
+        if (offset.Y < 0)
+        {
+            srcY = -offset.Y;
+            offset = offset with { Y = 0 };
+        }
+        int srcH = Math.Min(Size.Y, fullHeight - offset.Y);
+
+        for (; srcY < srcH; srcY++)
+        {
+            int offX = offset.X;
+            int srcX = 0;
+            if (offX < 0)
+            {
+                srcX = -offX;
+                offX = 0;
+            }
+            int srcW = Math.Min(Size.X, fullWidth - offX);
+            if (srcW <= 0)
+                continue;
+
+            Span<byte> outLine = rgba.AsSpan(
+                (offset.Y + srcY) * pitch + offX * 4,
+                (fullWidth - offX) * 4);
+            foreach (var segment in lines[srcY].Segments)
+            {
+                srcX += segment.X;
+                for (int i = 0; i < segment.Width; i++)
+                {
+                    if (srcX >= srcW)
+                        goto nextLine;
+                    outLine[srcX * 4 + 3] = alpha;
+                    if (IsPaletted)
+                    {
+                        var color = pixelData[segment.DataOffset + i];
+                        outLine[srcX * 4 + 0] = palette[color * 3 + 2];
+                        outLine[srcX * 4 + 1] = palette[color * 3 + 1];
+                        outLine[srcX * 4 + 2] = palette[color * 3 + 0];
+                    }
+                    else
+                    {
+                        var colorI = segment.DataOffset + i * 3;
+                        outLine[srcX * 4 + 0] = pixelData[colorI + 2];
+                        outLine[srcX * 4 + 1] = pixelData[colorI + 1];
+                        outLine[srcX * 4 + 2] = pixelData[colorI + 0];
+                    }
+                    srcX++;
+                }
+            }
+nextLine:;
+        }
+    }
+    
+    public void ConvertToFile(string targetPath, byte alpha)
+    {
+        var rgba = ConvertToRGBA(alpha);
+        var writer = new StbImageWriteSharp.ImageWriter();
+        using var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
+        writer.WritePng(rgba, Size.X, Size.Y, StbImageWriteSharp.ColorComponents.RedGreenBlueAlpha, fileStream);
     }
 }
 
@@ -182,6 +269,9 @@ public class AniV1File
         Alpha = reader.ReadByte();
         reader.BaseStream.Position += 8;
 
+        if (spriteCount > AniFrameIndices.Count)
+            throw new InvalidDataException($"Sprite count is greater than maximum {AniFrameIndices.Count}");
+
         var sprites = new AniSprite[checked((int)spriteCount)];
         Sprites = sprites;
         for (int i = 0; i < sprites.Length; i++)
@@ -224,6 +314,50 @@ public class AniV1File
                 indented.Write("- ");
                 frame.WriteTo(indented);
             }
+        }
+    }
+
+    public void ConvertFrameToFile(int frameI, string targetPath)
+    {
+        var rgba = RenderFrame(frameI);
+        var writer = new StbImageWriteSharp.ImageWriter();
+        using var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
+        writer.WritePng(rgba, TotalSize.X, TotalSize.Y, StbImageWriteSharp.ColorComponents.RedGreenBlueAlpha, fileStream);
+    }
+
+    public byte[] RenderFrame(int frameI)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(frameI);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(frameI, Frames.Count);
+        byte[] rgba = new byte[TotalSize.X * TotalSize.Y * 4];
+        RenderFrameInto(frameI, rgba);
+        return rgba;        
+    }
+
+    private void RenderFrameInto(int frameI, byte[] rgba)
+    {
+        var frame = Frames[frameI];
+        SPoint frameMin = new(9999, 9999), frameMax = new(-9999, -9999);
+        foreach (var (spriteI, sprite) in Sprites.Indexed())
+        {
+            var imageI = frame.ImageIndices[spriteI];
+            if (imageI <= 0)
+                continue;
+            var image = sprite.Images[imageI - 1];
+            frameMin = SPoint.Min(frameMin, image.DrawOffset);
+            frameMax = SPoint.Max(frameMax, image.DrawOffset + image.Size);
+        }
+        if (frameMin.X > frameMax.X || frameMin.Y > frameMax.Y)
+            return;
+
+        foreach (var (spriteI, sprite) in Sprites.Indexed().Reverse())
+        {
+            var imageI = frame.ImageIndices[spriteI];
+            if (imageI <= 0)
+                continue;
+            var image = sprite.Images[imageI - 1];
+            var offset = image.DrawOffset - frameMin;
+            image.DrawInto(rgba, TotalSize.X * 4, offset, Alpha);
         }
     }
 }

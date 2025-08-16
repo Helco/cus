@@ -64,6 +64,7 @@ internal class Program
             foreach (var t in emc.EmbeddedFiles)
             {
                 var (fileName, offset, size) = t;
+                bool isDuplicate = false;
                 if (t.Name == "")
                 {
                     if (t.Size == 0)
@@ -83,6 +84,7 @@ internal class Program
                     {
                         Console.WriteLine($"  Duplicate filename with diff content: {t.Name}");
                         fileName += $"-{t.Offset}";
+                        isDuplicate = true;
                     }
                 }
                 else
@@ -95,7 +97,7 @@ internal class Program
                 using var targetStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
                 targetStream.Write(bytes, 0, (int)size);
 
-                if (Path.GetExtension(t.Name)?.Equals(".ANI", StringComparison.InvariantCultureIgnoreCase) is true)
+                if (!isDuplicate && Path.GetExtension(t.Name)?.Equals(".ANI", StringComparison.InvariantCultureIgnoreCase) is true)
                     AddAsyncTask(() => DumpANI(bytes, targetPath));
                 else
                     ArrayPool<byte>.Shared.Return(bytes);
@@ -117,17 +119,35 @@ internal class Program
         }
 
         Task.WaitAll([.. asyncTasks]);
+        //void AddAsyncTask(Action action) => action();
         void AddAsyncTask(Action action) => asyncTasks.Add(Task.Run(action));
     }
 
     private static void DumpANI(byte[] bytes, string targetPath)
     {
-        targetPath += ".txt";
         var aniFile = new AniV1File(new MemoryStream(bytes, writable: false), leaveOpen: false);
-        var descrFileStream = new StreamWriter(targetPath);
+        var descrFileStream = new StreamWriter(targetPath + ".txt");
         using var descrWriter = new CodeWriter(descrFileStream);
         aniFile.WriteTo(descrWriter);
         ArrayPool<byte>.Shared.Return(bytes);
+
+        targetPath = Path.ChangeExtension(targetPath, null);
+        Directory.CreateDirectory(Path.Combine(targetPath, "images"));
+        foreach (var (spriteI, sprite) in aniFile.Sprites.Indexed())
+        {
+            foreach (var (imageI, image) in sprite.Images.Indexed())
+            {
+                var imagePath = Path.Combine(targetPath, "images", $"img-{spriteI}-{imageI}.png");
+                image.ConvertToFile(imagePath, aniFile.Alpha);
+            }
+        }
+
+        Directory.CreateDirectory(Path.Combine(targetPath, "frames"));
+        for (int frameI = 0; frameI < aniFile.Frames.Count; frameI++)
+        {
+            var imagePath = Path.Combine(targetPath, "frames", $"frame-{frameI}.png");
+            aniFile.ConvertFrameToFile(frameI, imagePath);
+        }
     }
 
     private static void DumpTypeDescriptors(string source, string target)
