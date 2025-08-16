@@ -24,6 +24,9 @@ public static class BinaryReaderExtensions
         return Encoding.Latin1.GetString(bytes);
     }
 
+    public static SPoint ReadSPoint(this BinaryReader reader) =>
+        new(reader.ReadInt16(), reader.ReadInt16());
+
     public static IEnumerable<(int, T)> Indexed<T>(this IEnumerable<T> set)
     {
         int index = 0;

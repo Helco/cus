@@ -1,0 +1,22 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+#include "aniCommon.bt"
+
+char magic[3];
+Assert(magic[0] == 'A' && magic[1] == 'N' && magic[2] == 'I');
+char version;
+Assert(version == 0);
+VarString name;
+
+Animation anim;

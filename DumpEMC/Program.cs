@@ -36,6 +36,7 @@ internal class Program
     private static void DumpAll(string source, string target)
     {
         TypeDescriptorBlock? globalTypes = null;
+        var asyncTasks = new List<Task>();
 
         Directory.CreateDirectory(target);
         foreach (var file in Directory.GetFiles(source))
@@ -59,18 +60,45 @@ internal class Program
             if (file.Contains("global", StringComparison.InvariantCultureIgnoreCase) && globalTypes is null)
                 globalTypes = emc.Types;
 
-            continue;
-            foreach (var (fileName, offset, size) in emc.EmbeddedFiles)
+            var foundFiles = new Dictionary<string, EmcEmbeddedFile>();
+            foreach (var t in emc.EmbeddedFiles)
             {
+                var (fileName, offset, size) = t;
+                if (t.Name == "")
+                {
+                    if (t.Size == 0)
+                        continue;
+                    else
+                        throw new InvalidDataException("Empty filename with content");
+                }
+                fileName = Path.GetFileName(fileName);
+                if (foundFiles.TryGetValue(fileName, out var prev))
+                {
+                    if (prev == t)
+                    {
+                        Console.WriteLine($"  Duplicate file: {t}");
+                        continue;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"  Duplicate filename with diff content: {t.Name}");
+                        fileName += $"-{t.Offset}";
+                    }
+                }
+                else
+                    foundFiles.Add(fileName, t);
+
                 var bytes = ArrayPool<byte>.Shared.Rent((int)size);
                 fileStream.Position = offset;
                 fileStream.ReadExactly(bytes, 0, (int)size);
-                var targetFileName = fileName;
-                if (targetFileName == "")
-                    targetFileName = $"unnamed-{offset}";
-                using var targetStream = new FileStream(Path.Combine(targetBase, Path.GetFileName(targetFileName)), FileMode.Create, FileAccess.Write);
+                var targetPath = Path.Combine(targetBase, fileName);
+                using var targetStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
                 targetStream.Write(bytes, 0, (int)size);
-                ArrayPool<byte>.Shared.Return(bytes);
+
+                if (Path.GetExtension(t.Name)?.Equals(".ANI", StringComparison.InvariantCultureIgnoreCase) is true)
+                    AddAsyncTask(() => DumpANI(bytes, targetPath));
+                else
+                    ArrayPool<byte>.Shared.Return(bytes);
             }
         }
 
@@ -87,6 +115,19 @@ internal class Program
                 CodDumper.FullDump(cod, globalTypes, writer, rawOps: false);
             }
         }
+
+        Task.WaitAll([.. asyncTasks]);
+        void AddAsyncTask(Action action) => asyncTasks.Add(Task.Run(action));
+    }
+
+    private static void DumpANI(byte[] bytes, string targetPath)
+    {
+        targetPath += ".txt";
+        var aniFile = new AniV1File(new MemoryStream(bytes, writable: false), leaveOpen: false);
+        var descrFileStream = new StreamWriter(targetPath);
+        using var descrWriter = new CodeWriter(descrFileStream);
+        aniFile.WriteTo(descrWriter);
+        ArrayPool<byte>.Shared.Return(bytes);
     }
 
     private static void DumpTypeDescriptors(string source, string target)

@@ -1,0 +1,121 @@
+//------------------------------------------------
+//--- 010 Editor v9.0.2 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+// DOES NOT WORK YET!!!!
+
+struct VarUInt
+{
+    byte bValue;
+    local uint value = bValue;
+    if (bValue != 0xFF)
+        return;
+    ushort sValue;
+    value = sValue;
+    if (sValue != 0xFFFF)
+        return;
+    uint iValue;
+    value = iValue;
+};
+
+typedef struct
+{
+    VarUInt length;
+    if (length.value > 0)
+        char value[length.value];
+} VarString <read=ReadVarString>;
+string ReadVarString(VarString& str)
+{
+    if (str.length.value == 0)
+        return "";
+    else
+        return str.value;
+}
+
+typedef struct {
+  short x, y;
+} SPOINT <read=ReadSPOINT>;
+string ReadSPOINT(SPOINT& p)
+{
+  char buffer[128];
+  SPrintf(buffer, "%d, %d", p.x, p.y);
+  return buffer;
+}
+
+struct Sprite;
+struct Image;
+struct LineSegments;
+struct Segment;
+struct Frame;
+
+char magic[3];
+Assert(magic[0] == 'A' && magic[1] == 'N' && magic[2] == 'I');
+char version;
+Assert(version == 0);
+uint totalSize;
+Assert(totalSize == FileSize());
+
+uint spriteCount, frameCount;
+SPOINT totalSize;
+uint arg1, totalDuration, arg3;
+byte alpha;
+byte skipped[8];
+
+if (spriteCount > 0)
+  Sprite sprites[spriteCount] <optimize=false>;
+if (frameCount > 0)
+  Frame frames[frameCount];
+
+struct Sprite {
+  uint imageCount;
+  byte order, isDisabled;
+  uint arg; // RGBA? Signed value?
+  if (imageCount > 0)
+    Image images[imageCount] <optimize=false>;
+};
+
+struct Image {
+  SPOINT drawOffset, p2;
+  SPOINT size;
+  uint pixelCount;
+  SPOINT p4;
+  byte flag1;
+  byte isPaletted;
+
+  if (size.y > 0)
+    LineSegments lines[size.y] <optimize=false>;
+  
+  if (isPaletted) {
+    byte indices[pixelCount];
+    byte palette[768];
+  }
+  else if (pixelCount > 0) {
+    byte colors[3 * pixelCount];
+  }
+};
+
+struct LineSegments {
+  ushort count;
+  if (count > 0)
+    Segment segments[count];
+};
+
+struct Segment {
+  ushort xOffset, width;
+  uint dataOffset;
+};
+
+struct Frame {
+  byte imageIndices[8];
+  SPOINT negOffset, posOffset;
+  ushort duration;
+};
