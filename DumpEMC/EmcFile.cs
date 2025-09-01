@@ -558,7 +558,7 @@ public class EmcFile
 
     private string ReadAnimacionV1(BinaryReader reader)
     {
-        var name = reader.ReadString();
+        var name = reader.ReadVarString();
         var size = reader.ReadUInt32();
         embeddedFiles.Add(new(name, reader.BaseStream.Position, size));
         reader.BaseStream.Position += size;
