@@ -21,8 +21,8 @@ internal class Program
         DumpAll(@"E:\SteamLibrary\steamapps\common\Mamelucos\Archivos\Mapas\", "mamelucos");
         DumpAll(@"E:\SteamLibrary\steamapps\common\Vaqueros\", "vaqueros");
         DumpAll(@"E:\SteamLibrary\steamapps\common\Terror\", "terror");
-        DumpAll(@"C:\dev\cusg-aventura-orginal\disk1\Install\", "aventura-orginal-disk1");
-        DumpAll(@"C:\dev\cusg-aventura-orginal\disk2\Install\", "aventura-orginal-disk2");
+        DumpAll(@"C:\dev\cusg-aventura-orginal\as-disks\disk1\Install\", "aventura-orginal-disk1");
+        DumpAll(@"C:\dev\cusg-aventura-orginal\as-disks\disk2\Install\", "aventura-orginal-disk2");
     }
 
     private static readonly string[] ScriptPaths =
@@ -31,6 +31,13 @@ internal class Program
         "../Script/FILE.COD",
         "../Script/FILEMON.COD",
         "../Script/SCRIPT.COD"
+    ];
+
+    private static readonly string[] AnimationPaths =
+    [
+        "../Animaciones",
+        "../Mascaras",
+        "../Fondos"
     ];
 
     private static void DumpAll(string source, string target)
@@ -56,6 +63,8 @@ internal class Program
             {
                 using (var writer = new CodeWriter(new StreamWriter(targetBase + ".script.txt")))
                     CodDumper.FullDump(emc.Cod, emc.Types, writer, rawOps: false);
+                using (var writer = new CodeWriter(new StreamWriter(targetBase + ".asm.txt")))
+                    CodDumper.FullDump(emc.Cod, emc.Types, writer, rawOps: true);
             }
             if (file.Contains("global", StringComparison.InvariantCultureIgnoreCase) && globalTypes is null)
                 globalTypes = emc.Types;
@@ -98,7 +107,7 @@ internal class Program
                 targetStream.Write(bytes, 0, (int)size);
 
                 if (!isDuplicate && Path.GetExtension(t.Name)?.Equals(".ANI", StringComparison.InvariantCultureIgnoreCase) is true)
-                    AddAsyncTask(() => DumpANI(bytes, targetPath));
+                    AddAsyncTask(() => DumpANI(bytes, targetPath, isV2: false));
                 else
                     ArrayPool<byte>.Shared.Return(bytes);
             }
@@ -115,6 +124,28 @@ internal class Program
                 CodFile cod = new(scriptSourcePath);
                 using var writer = new CodeWriter(new StreamWriter(Path.Combine(target, Path.GetFileNameWithoutExtension(scriptRelPath) + ".script.txt")));
                 CodDumper.FullDump(cod, globalTypes, writer, rawOps: false);
+                using var writer2 = new CodeWriter(new StreamWriter(Path.Combine(target, Path.GetFileNameWithoutExtension(scriptRelPath) + ".asm.txt")));
+                CodDumper.FullDump(cod, globalTypes, writer2, rawOps: true);
+            }
+        }
+
+        if (globalTypes is { Generation: Generation.V2 })
+        {
+            Console.WriteLine($"Converting V2 animations for {target}");
+            foreach (var animPath in AnimationPaths)
+            {
+                var fullAnimPath = Path.Join(source, animPath);
+                var fullOutPath = Path.Join(target, Path.GetFileName(fullAnimPath));
+                if (!Directory.Exists(fullAnimPath))
+                    continue;
+                Directory.CreateDirectory(fullOutPath);
+                foreach (var anim in Directory.GetFiles(fullAnimPath))
+                {
+                    var filename = Path.GetFileName(anim);
+                    if (filename.ToUpperInvariant() == "MUSEO_F.ANI" || filename.ToUpperInvariant() == "MUSEO_O.ANI")
+                        continue; // "hidden" dialog/name text file
+                    AddAsyncTask(() => DumpANI(anim, Path.Join(fullOutPath, filename), isV2: true));
+                }
             }
         }
 
@@ -123,9 +154,21 @@ internal class Program
         void AddAsyncTask(Action action) => asyncTasks.Add(Task.Run(action));
     }
 
-    private static void DumpANI(byte[] bytes, string targetPath)
+    private static void DumpANI(string source, string targetPath, bool isV2)
     {
-        var aniFile = new AniV1File(new MemoryStream(bytes, writable: false), leaveOpen: false);
+        using var fs = new FileStream(source, FileMode.Open, FileAccess.Read);
+        var bytes = ArrayPool<byte>.Shared.Rent((int)fs.Length);
+        fs.ReadExactly(bytes.AsSpan(0, (int)fs.Length));
+        fs.Dispose();
+        DumpANI(bytes, targetPath, isV2);
+    }
+
+    private static void DumpANI(byte[] bytes, string targetPath, bool isV2)
+    {
+        
+        AniFile aniFile = isV2
+            ? new AniV2File(new MemoryStream(bytes, writable: false), leaveOpen: false)
+            : new AniV1File(new MemoryStream(bytes, writable: false), leaveOpen: false);
         var descrFileStream = new StreamWriter(targetPath + ".txt");
         using var descrWriter = new CodeWriter(descrFileStream);
         aniFile.WriteTo(descrWriter);
@@ -139,7 +182,7 @@ internal class Program
         }
         else
         {
-            targetPath = Path.ChangeExtension(targetPath, null);
+            /*targetPath = Path.ChangeExtension(targetPath, null);
             Directory.CreateDirectory(Path.Combine(targetPath, "images"));
             foreach (var (spriteI, sprite) in aniFile.Sprites.Indexed())
             {
@@ -155,7 +198,7 @@ internal class Program
             {
                 var imagePath = Path.Combine(targetPath, "frames", $"frame-{frameI}.png");
                 aniFile.ConvertFrameToFile(frameI, imagePath);
-            }
+            }*/
         }
 #pragma warning restore CS0162 // Unreachable code detected
     }

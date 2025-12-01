@@ -180,21 +180,46 @@ nextLine:;
 
 public class AniSprite
 {
-    public readonly IReadOnlyList<AniImage> Images;
-    public readonly byte Order;
-    public readonly bool IsDisabled;
-    public readonly uint Arg;
+    public required IReadOnlyList<AniImage> Images { get; init; }
+    public byte Order { get; init; }
+    public bool IsDisabled { get; init; }
+    public uint Arg { get; init; }
 
-    public AniSprite(BinaryReader reader)
+    private AniSprite() {}
+
+    public static AniSprite ReadV1(BinaryReader reader)
     {
         uint imageCount = reader.ReadUInt32();
-        Order = reader.ReadByte();
-        IsDisabled = reader.ReadBoolean();
-        Arg = reader.ReadUInt32();
+        var order = reader.ReadByte();
+        var isDisabled = reader.ReadBoolean();
+        var arg = reader.ReadUInt32();
         var images = new AniImage[checked((int)imageCount)];
-        Images = images;
         for (int i = 0; i < images.Length; i++)
             images[i] = new(reader);
+        return new()
+        {
+            Images = images,
+            Order = order,
+            IsDisabled = isDisabled,
+            Arg = arg
+        };
+    }
+
+    public static AniSprite ReadV2(BinaryReader reader)
+    {
+        uint imageCount = reader.ReadUInt32();
+        var order = reader.ReadByte();
+        var arg = reader.ReadUInt32();
+        var images = new AniImage[checked((int)imageCount)];
+        for (int i = 0; i < images.Length; i++)
+            images[i] = new(reader);
+        return new()
+        {
+            Images = images,
+            Order = order,
+            IsDisabled = false,
+            Arg = arg
+        };
     }
 
     public void WriteTo(CodeWriter writer)
@@ -227,8 +252,11 @@ public readonly record struct AniFrame(
     SPoint PosOffset,
     ushort Duration)
 {
-    public AniFrame(BinaryReader reader)
-        : this(new(reader), reader.ReadSPoint(), reader.ReadSPoint(), reader.ReadUInt16()) { }
+    public static AniFrame ReadV1(BinaryReader reader) =>
+        new(new(reader), reader.ReadSPoint(), reader.ReadSPoint(), reader.ReadUInt16());
+
+    public static AniFrame ReadV3(BinaryReader reader) =>
+        new(new(reader), reader.ReadSPoint(), reader.ReadSPoint(), reader.ReadUInt16());
 
     public void WriteTo(CodeWriter writer)
     {
@@ -247,93 +275,23 @@ public readonly record struct AniFrame(
     }
 }
 
-public class AniV1File
+public abstract class AniFile
 {
-    public readonly string Name;
-    public readonly SPoint TotalSize;
-    public readonly uint Arg1, TotalDuration, Arg3;
-    public readonly byte Alpha;
-    public readonly IReadOnlyList<AniSprite> Sprites;
-    public readonly IReadOnlyList<AniFrame> Frames;
-    private readonly int[] spriteOrder;
+    public uint TotalDuration { get; protected set; }
+    public byte Alpha { get; protected set; } = 0xFF;
+    public int[] SpriteOrder { get; protected set; } = [];
+    public IReadOnlyList<AniSprite> Sprites { get; protected set; } = [];
+    public IReadOnlyList<AniFrame> Frames { get; protected set; } = [];
 
-    public AniV1File(Stream stream, bool leaveOpen = true)
-    {
-        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen);
-        var magic = reader.ReadBytes(4);
-        if (magic[0] != 'A' || magic[1] != 'N' || magic[2] != 'I' || magic[3] != 0)
-            throw new InvalidDataException("Invalid ANI magic");
+    public abstract void WriteTo(CodeWriter writer);
 
-        Name = reader.ReadVarString();
-        var spriteCount = reader.ReadUInt32();
-        var frameCount = reader.ReadUInt32();
-        TotalSize = reader.ReadSPoint();
-        Arg1 = reader.ReadUInt32();
-        TotalDuration = reader.ReadUInt32();
-        Arg3 = reader.ReadUInt32();
-        Alpha = reader.ReadByte();
-        reader.BaseStream.Position += 8;
-
-        if (spriteCount > AniFrameIndices.Count)
-            throw new InvalidDataException($"Sprite count is greater than maximum {AniFrameIndices.Count}");
-
-        var sprites = new AniSprite[checked((int)spriteCount)];
-        Sprites = sprites;
-        for (int i = 0; i < sprites.Length; i++)
-            sprites[i] = new(reader);
-
-        var frames = new AniFrame[checked((int)frameCount)];
-        Frames = frames;
-        for (int i = 0; i < frames.Length; i++)
-            frames[i] = new(reader);
-
-        spriteOrder = [.. Enumerable
-            .Range(0, sprites.Length)
-            .Reverse()
-            .OrderByDescending(i => sprites[i].Order)];
-    }
-
-    public void WriteTo(CodeWriter writer)
-    {
-        writer.WriteLine($"Name: {Name}");
-        writer.WriteLine($"Size: {TotalSize}");
-        writer.WriteLine($"Total Duration: {TotalDuration}");
-        writer.WriteLine($"Alpha: {(int)Alpha}");
-        writer.WriteLine($"Arg1: {Arg1}");
-        writer.WriteLine($"Arg3: {Arg3}");
-
-        if (Sprites.Count > 0)
-        {
-            writer.WriteLine();
-            writer.WriteLine($"Sprites: {Sprites.Count}");
-            using var indented = writer.Indented;
-            foreach (var sprite in Sprites)
-            {
-                indented.Write("- ");
-                sprite.WriteTo(indented);
-            }
-        }
-
-        if (Frames.Count > 0)
-        {
-            writer.WriteLine();
-            writer.WriteLine($"Frames: {Frames.Count}");
-            using var indented = writer.Indented;
-            foreach (var frame in Frames)
-            {
-                indented.Write("- ");
-                frame.WriteTo(indented);
-            }
-        }
-    }
-
-    public void ConvertFrameToFile(int frameI, string targetPath)
+    /*public void ConvertFrameToFile(int frameI, string targetPath)
     {
         var rgba = RenderFrame(frameI);
         var writer = new StbImageWriteSharp.ImageWriter();
         using var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
         writer.WritePng(rgba, TotalSize.X, TotalSize.Y, StbImageWriteSharp.ColorComponents.RedGreenBlueAlpha, fileStream);
-    }
+    }*/
 
     public byte[] RenderFrame(int frameI)
     {
@@ -377,7 +335,7 @@ public class AniV1File
         Array.Fill<byte>(rgba, 0);
         for (int i = 0; i < Sprites.Count; i++)
         {
-            var spriteI = spriteOrder[i];
+            var spriteI = SpriteOrder[i];
             var sprite = Sprites[spriteI];
             var imageI = frame.ImageIndices[spriteI];
             if (imageI <= 0)
@@ -406,6 +364,149 @@ public class AniV1File
             {
                 RenderFrameInto(frameI, argb, maxFrameSize, isArgb: true);
                 gif.AddFrame(image, delay: frame.Duration, quality: GifQuality.Bit8);
+            }
+        }
+    }
+}
+
+public class AniV2File : AniFile
+{
+    public AniV2File(Stream stream, bool leaveOpen = true)
+    {
+        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen);
+        var magic = reader.ReadBytes(4);
+        if (magic[0] != 'A' || magic[1] != 'N' || magic[2] != 'I' || magic[3] != 0)
+            throw new InvalidDataException("Invalid ANI magic");
+
+        reader.ReadUInt32(); // unused
+        var spriteCount = reader.ReadUInt32();
+        var frameCount = reader.ReadUInt32();
+        TotalDuration = reader.ReadUInt32();
+        Alpha = reader.ReadByte();
+        reader.BaseStream.Position += 8;
+
+        if (spriteCount > AniFrameIndices.Count)
+            throw new InvalidDataException($"Sprite count is greater than maximum {AniFrameIndices.Count}");
+
+        var sprites = new AniSprite[checked((int)spriteCount)];
+        Sprites = sprites;
+        for (int i = 0; i < sprites.Length; i++)
+            sprites[i] = AniSprite.ReadV2(reader);
+
+        var frames = new AniFrame[checked((int)frameCount)];
+        Frames = frames;
+        for (int i = 0; i < frames.Length; i++)
+            frames[i] = AniFrame.ReadV3(reader);
+
+        SpriteOrder = [.. Enumerable
+            .Range(0, sprites.Length)
+            .Reverse()
+            .OrderByDescending(i => sprites[i].Order)];
+    }
+
+    public override void WriteTo(CodeWriter writer)
+    {
+        writer.WriteLine($"Total Duration: {TotalDuration}");
+        writer.WriteLine($"Alpha: {(int)Alpha}");
+
+        if (Sprites.Count > 0)
+        {
+            writer.WriteLine();
+            writer.WriteLine($"Sprites: {Sprites.Count}");
+            using var indented = writer.Indented;
+            foreach (var sprite in Sprites)
+            {
+                indented.Write("- ");
+                sprite.WriteTo(indented);
+            }
+        }
+
+        if (Frames.Count > 0)
+        {
+            writer.WriteLine();
+            writer.WriteLine($"Frames: {Frames.Count}");
+            using var indented = writer.Indented;
+            foreach (var frame in Frames)
+            {
+                indented.Write("- ");
+                frame.WriteTo(indented);
+            }
+        }
+    }
+}
+
+public class AniV1File : AniFile
+{
+    public readonly string Name;
+    public readonly SPoint TotalSize;
+    public readonly uint Arg1, Arg3;
+
+    public AniV1File(Stream stream, bool leaveOpen = true)
+    {
+        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen);
+        var magic = reader.ReadBytes(4);
+        if (magic[0] != 'A' || magic[1] != 'N' || magic[2] != 'I' || magic[3] != 0)
+            throw new InvalidDataException("Invalid ANI magic");
+
+        Name = reader.ReadVarString();
+        var spriteCount = reader.ReadUInt32();
+        var frameCount = reader.ReadUInt32();
+        TotalSize = reader.ReadSPoint();
+        Arg1 = reader.ReadUInt32();
+        TotalDuration = reader.ReadUInt32();
+        Arg3 = reader.ReadUInt32();
+        Alpha = reader.ReadByte();
+        reader.BaseStream.Position += 8;
+
+        if (spriteCount > AniFrameIndices.Count)
+            throw new InvalidDataException($"Sprite count is greater than maximum {AniFrameIndices.Count}");
+
+        var sprites = new AniSprite[checked((int)spriteCount)];
+        Sprites = sprites;
+        for (int i = 0; i < sprites.Length; i++)
+            sprites[i] = AniSprite.ReadV1(reader);
+
+        var frames = new AniFrame[checked((int)frameCount)];
+        Frames = frames;
+        for (int i = 0; i < frames.Length; i++)
+            frames[i] = AniFrame.ReadV1(reader);
+
+        SpriteOrder = [.. Enumerable
+            .Range(0, sprites.Length)
+            .Reverse()
+            .OrderByDescending(i => sprites[i].Order)];
+    }
+
+    public override void WriteTo(CodeWriter writer)
+    {
+        writer.WriteLine($"Name: {Name}");
+        writer.WriteLine($"Size: {TotalSize}");
+        writer.WriteLine($"Total Duration: {TotalDuration}");
+        writer.WriteLine($"Alpha: {(int)Alpha}");
+        writer.WriteLine($"Arg1: {Arg1}");
+        writer.WriteLine($"Arg3: {Arg3}");
+
+        if (Sprites.Count > 0)
+        {
+            writer.WriteLine();
+            writer.WriteLine($"Sprites: {Sprites.Count}");
+            using var indented = writer.Indented;
+            foreach (var sprite in Sprites)
+            {
+                indented.Write("- ");
+                sprite.WriteTo(indented);
+            }
+        }
+
+        if (Frames.Count > 0)
+        {
+            writer.WriteLine();
+            writer.WriteLine($"Frames: {Frames.Count}");
+            using var indented = writer.Indented;
+            foreach (var frame in Frames)
+            {
+                indented.Write("- ");
+                frame.WriteTo(indented);
             }
         }
     }

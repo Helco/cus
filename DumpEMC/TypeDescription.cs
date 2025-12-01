@@ -273,7 +273,7 @@ public class TypeDescriptorBlock
     {
         80896606 or 183099299 or 170113847 => Generation.V1,
         6943904 or 1001862970 => Generation.V2,
-        1069178032 or 1086694421 => Generation.V3,
+        1063582633 or 1069178032 or 1086694421 => Generation.V3,
         _ => Generation.Unknown
     };
 
