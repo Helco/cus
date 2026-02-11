@@ -122,6 +122,26 @@ public sealed class HiddenTextProvider(string basePath, string targetFolder, byt
     }
 }
 
+public sealed class EmbeddedTextProvider(string basePath, string targetFolder) : DirectTextOutput(targetFolder)
+{
+    private T[] ReadEmbeddedFile<T>(string name, Func<string, T> parseLine)
+    {
+        using var stream = new FileStream(Path.Join(basePath, "global.emc"), FileMode.Open, FileAccess.Read);
+        var emc = new EmcFile(stream);
+        var file = emc.EmbeddedFiles.First(f => f.Name.Contains(name, StringComparison.InvariantCultureIgnoreCase));
+        stream.Position = file.Offset;
+        var bytes = new byte[file.Size];
+        stream.ReadExactly(bytes);
+        return [.. Program.Encoding.GetString(bytes)
+            .Split("\n")
+            .Where(l => l.Trim().Length > 0)
+            .Select(parseLine)];
+    }
+
+    public override DialogLine[] ReadDialogLines() => ReadEmbeddedFile("TEXTOS.TXT", DialogLine.Parse);
+    public override ObjectName[] ReadObjectNames() => ReadEmbeddedFile("OBJETOS.TXT", ObjectName.Parse);
+}
+
 internal static class Program
 {
     private const string Endpoint = "http://localhost:5000/translate"; // LibreTranslate
@@ -133,6 +153,7 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         await Task.WhenAll(
+            TranslateAll(new EmbeddedTextProvider(@"C:\dev\cusg-aventura-orginal\as-disks\disk1\Install", "AventuraOrginal")),
             //TranslateAll(new RawTextProvider(@"C:\dev\cus\DumpEMC\bin\Debug\net8.0\vaqueros\GLOBAL\")),
             TranslateAll(new HiddenTextProvider(@"E:\SteamLibrary\steamapps\common\SextaSecta\Spanish\", "SextaSecta")),
             TranslateAll(new HiddenTextProvider(@"E:\SteamLibrary\steamapps\common\Mortadelo y Filemón La banda de Corvino", "Corvino", 0x60)),
